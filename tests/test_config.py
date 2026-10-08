@@ -1,4 +1,4 @@
-from pickle_app.config import Settings
+from pickled.config import Settings
 
 
 def test_settings_reads_api_key_from_env(monkeypatch):
