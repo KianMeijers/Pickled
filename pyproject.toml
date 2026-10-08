@@ -1,7 +1,7 @@
 [project]
-name = "meal-planner"
+name = "pickle-app"
 version = "0.1.0"
-description = "Add your description here"
+description = "Pickle: a chat-based meal planner built around Dutch supermarket deals and seasonal produce"
 readme = "README.md"
 authors = [
     { name = "Kian Meijers", email = "kian.meijers@gmail.com" }
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-meal-planner = "meal_planner:main"
+pickle = "pickle_app:main"
 
 [build-system]
 requires = ["uv_build>=0.12.23,<0.13.0"]

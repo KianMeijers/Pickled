@@ -1,4 +1,4 @@
-from meal_planner.config import Settings
+from pickle_app.config import Settings
 
 
 def test_settings_reads_api_key_from_env(monkeypatch):
