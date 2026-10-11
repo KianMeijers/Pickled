@@ -9,11 +9,15 @@ The people Pickled plans for, who share one Meal Plan and one Shopping List. Has
 _Avoid_: User, account, family
 
 **Meal Plan**:
-A set of meals chosen for one week, built from current Deals, Seasonal Produce, and a Taste Profile.
+A set of meals chosen for one week, built from current Deals, Seasonal Produce, and a Taste Profile. Its week runs from its Shopping Day (Saturday) to the following Friday, and it uses only the Deals valid on that Shopping Day.
 _Avoid_: Menu, schedule, week plan
 
+**Shopping Day**:
+The day the Household does its one big shop for a Meal Plan, and the first day of that Meal Plan's week. In v1 it is always Saturday.
+_Avoid_: Shop day, grocery day
+
 **Deal**:
-A time-limited discount on a product at Albert Heijn or Jumbo, valid for a specific date range.
+A time-limited discount on a product at Albert Heijn or Jumbo, valid for a specific date range and for a channel: in store, online, or both. The Household shops in store.
 _Avoid_: Offer, promotion, bonus, aanbieding
 
 **Seasonal Produce**:
@@ -29,7 +33,7 @@ The chat between the Household and the agent about one Meal Plan. Each Meal Plan
 _Avoid_: Chat, thread, session
 
 **Shopping List**:
-The ingredients needed for a Meal Plan, grouped so they can be bought, with Deals marked.
+The ingredients needed for a Meal Plan, grouped so they can be bought, with Deals marked. One per Meal Plan, bought on its Shopping Day, usually all at one store; it splits across stores only when a Deal at the other store is clearly worth the trip.
 _Avoid_: Grocery list, basket
 
 **Taste Profile**:
