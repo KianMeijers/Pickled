@@ -17,7 +17,7 @@ The day the Household does its one big shop for a Meal Plan, and the first day o
 _Avoid_: Shop day, grocery day
 
 **Deal**:
-A time-limited discount on a product at Albert Heijn or Jumbo, valid for a specific date range and for a channel: in store, online, or both. The Household shops in store.
+A time-limited discount on a product, or a group of products, at Albert Heijn or Jumbo, valid for a specific date range and for a channel: in store, online, or both. The Household shops in store. Each Deal has a kind of discount (a percentage off, a fixed price, N for a price, buy N get M free, the Nth at half price, or something else), and where the store says so, the product's price and unit size. A Deal the store stops listing during its date range is withdrawn.
 _Avoid_: Offer, promotion, bonus, aanbieding
 
 **Seasonal Produce**:
