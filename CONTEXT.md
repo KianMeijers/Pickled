@@ -9,7 +9,7 @@ The people Pickled plans for, who share one Meal Plan and one Shopping List. Has
 _Avoid_: User, account, family
 
 **Meal Plan**:
-A set of meals chosen for one week, built from current Deals, Seasonal Produce, and a Taste Profile. Its week runs from its Shopping Day (Saturday) to the following Friday, and it uses only the Deals valid on that Shopping Day. One Meal Plan per week; it starts as a draft and the Household accepts it.
+A set of meals chosen for one week, built from current Deals, Seasonal Produce, and a Taste Profile. Its week runs from its Shopping Day (Saturday) to the following Friday, and it uses only the Deals valid on that Shopping Day. One Meal Plan per week; it starts as a draft and the Household accepts it. While it is a draft it can be redrafted, which replaces all its Meals. It can be accepted once every day has a Meal or is deliberately left empty. Accepting is a commitment, not a freeze: the days still ahead can change through its Conversation, but an accepted Meal Plan never goes back to draft. Days that have passed never change.
 _Avoid_: Menu, schedule, week plan
 
 **Meal**:
