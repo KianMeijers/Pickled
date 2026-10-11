@@ -25,7 +25,7 @@ A time-limited discount on a product, or a group of products, at Albert Heijn or
 _Avoid_: Offer, promotion, bonus, aanbieding
 
 **Ingredient**:
-A kind of food Pickled knows, such as "kipfilet" or "rode kool", known by one name plus aliases. Recipes, Deals and Seasonal Produce all point to Ingredients. A pantry Ingredient (oil, salt, spices) is assumed to be in stock and is only listed for the Household to check.
+A kind of food Pickled knows, such as "kipfilet" or "rode kool", known by one name plus aliases. Recipes, Deals and Seasonal Produce all point to Ingredients. A pantry Ingredient (oil, salt, spices) is assumed to be in stock and is only listed for the Household to check. Each Ingredient has a rough number of days it keeps after the Shopping Day, so perishable Meals go early in the week.
 _Avoid_: Item, food, product
 
 **Product**:
@@ -49,9 +49,9 @@ The ingredients needed for a Meal Plan, grouped so they can be bought, with Deal
 _Avoid_: Grocery list, basket
 
 **Taste Profile**:
-What Pickled has learned about what someone likes and dislikes, built up over time from conversations and feedback. Kept as short notes that the agent writes and the Household can read and edit.
+What Pickled has learned about what someone likes and dislikes, built up over time from conversations and feedback. Kept as a few short notes that the agent writes and the Household can read and edit. The agent adds a note when the Household states a lasting preference, and reflects on each week's Conversation after the week ends; it never rewrites a note the Household wrote.
 _Avoid_: Preferences, memory, user profile
 
 **Food Goal**:
-An optional target someone sets for their eating, such as a protein minimum, a calorie range, a number of vegetarian days, or a weekly budget. Nutrition goals are per person per day; a budget is for the whole Household per week.
+An optional target someone sets for their eating, such as a protein minimum, a calorie range, a number of vegetarian days, or a weekly budget. Nutrition goals are per person per day; a budget is for the whole Household per week. Because a Meal Plan only covers dinners, a nutrition goal is checked against the dinner share of the day (40%).
 _Avoid_: Diet, nutrition target, constraint
