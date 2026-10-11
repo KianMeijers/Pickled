@@ -17,7 +17,7 @@ A time-limited discount on a product at Albert Heijn or Jumbo, valid for a speci
 _Avoid_: Offer, promotion, bonus, aanbieding
 
 **Seasonal Produce**:
-Fruit and vegetables that are in season in the Netherlands during a given week.
+Fruit and vegetables (including mushrooms) grown in the Netherlands that are in season in a given month. Each item is either fresh (being harvested that month) or stored (harvested earlier and sold from storage, such as apples or onions in winter). A Meal Plan uses the month that most of its days fall in. Produce available all year, such as potatoes or heated-greenhouse tomatoes, is not Seasonal Produce.
 _Avoid_: Season food, local produce
 
 **Recipe**:
