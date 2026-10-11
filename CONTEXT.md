@@ -13,7 +13,7 @@ A set of meals chosen for one week, built from current Deals, Seasonal Produce, 
 _Avoid_: Menu, schedule, week plan
 
 **Meal**:
-The dinner on one day of a Meal Plan, filled by a Recipe for a number of servings, or by the leftovers of an earlier Meal. A day may have no Meal.
+The dinner on one day of a Meal Plan, filled by a Recipe for a number of servings, or by the leftovers of an earlier Meal. A day may have no Meal. Its meal cost is the price of what its Recipe actually uses, including a share of pantry Ingredients.
 _Avoid_: Dish, dinner slot
 
 **Shopping Day**:
@@ -23,6 +23,14 @@ _Avoid_: Shop day, grocery day
 **Deal**:
 A time-limited discount on a product, or a group of products, at Albert Heijn or Jumbo, valid for a specific date range and for a channel: in store, online, or both. The Household shops in store. Each Deal has a kind of discount (a percentage off, a fixed price, N for a price, buy N get M free, the Nth at half price, or something else), and where the store says so, the product's price and unit size. A Deal the store stops listing during its date range is withdrawn.
 _Avoid_: Offer, promotion, bonus, aanbieding
+
+**Ingredient**:
+A kind of food Pickled knows, such as "kipfilet" or "rode kool", known by one name plus aliases. Recipes, Deals and Seasonal Produce all point to Ingredients. A pantry Ingredient (oil, salt, spices) is assumed to be in stock and is only listed for the Household to check.
+_Avoid_: Item, food, product
+
+**Product**:
+Something a store sells for an Ingredient, with a price and a pack size. Each Ingredient has at most one chosen Product per store, picked once and reused; the Household can ask for a different one.
+_Avoid_: Article, SKU, item
 
 **Seasonal Produce**:
 Fruit and vegetables (including mushrooms) grown in the Netherlands that are in season in a given month. Each item is either fresh (being harvested that month) or stored (harvested earlier and sold from storage, such as apples or onions in winter). A Meal Plan uses the month that most of its days fall in. Produce available all year, such as potatoes or heated-greenhouse tomatoes, is not Seasonal Produce.
@@ -37,7 +45,7 @@ The chat between the Household and the agent about one Meal Plan. Each Meal Plan
 _Avoid_: Chat, thread, session
 
 **Shopping List**:
-The ingredients needed for a Meal Plan, grouped so they can be bought, with Deals marked. One per Meal Plan, bought on its Shopping Day, usually all at one store; it splits across stores only when a Deal at the other store is clearly worth the trip. The Household can add items of its own and tick items off.
+The ingredients needed for a Meal Plan, grouped so they can be bought, with Deals marked. One per Meal Plan, bought on its Shopping Day, usually all at one store; it splits across stores only when a Deal at the other store is clearly worth the trip. The Household can add items of its own and tick items off. Its shopping cost is whole packs at their price, leaving out pantry Ingredients: what the Household pays at the till, and what a budget Food Goal is checked against.
 _Avoid_: Grocery list, basket
 
 **Taste Profile**:
