@@ -1,7 +1,10 @@
 import argparse
 import logging
 
-from pickled import jobs, migrate
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from pickled import jobs, migrate, seasonal
 from pickled.config import Settings
 from pickled.stores import Store
 
@@ -26,6 +29,12 @@ def main(argv: list[str] | None = None) -> None:
         "--source", choices=[store.value for store in Store], help="default: every store"
     )
 
+    seasonal_parser = commands.add_parser("seasonal", help="manage Seasonal Produce")
+    seasonal_commands = seasonal_parser.add_subparsers(dest="seasonal_command", required=True)
+    seasonal_commands.add_parser(
+        "import", help="replace Seasonal Produce with the Voedingscentrum calendar"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "db" and args.db_command == "upgrade":
@@ -36,3 +45,22 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "jobs" and args.jobs_command == "run":
         logging.basicConfig(level=logging.INFO)
         jobs.run_job(args.job, args.source)
+    elif args.command == "seasonal" and args.seasonal_command == "import":
+        import_seasonal_produce()
+
+
+def import_seasonal_produce() -> None:
+    """Download the calendar and replace Seasonal Produce with it in one transaction."""
+    page = seasonal.download_calendar()
+    engine = create_engine(Settings().database_url)
+    try:
+        with Session(engine) as session, session.begin():
+            summary = seasonal.import_calendar(session, page)
+    except seasonal.CalendarError as error:
+        raise SystemExit(f"Seasonal Produce not imported, the old data is kept: {error}") from error
+    finally:
+        engine.dispose()
+    print(
+        f"Imported {summary.entries} Seasonal Produce entries for {summary.ingredients} "
+        f"Ingredients ({summary.stored} stored)."
+    )
