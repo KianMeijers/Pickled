@@ -90,11 +90,53 @@ class PriceObservation(Base):
 
 
 class ProductMiss(Base):
-    """The match model found no Product for the Ingredient at the store, so it isn't asked
-    again until this is old. Replaced by any later answer."""
+    """A time the match model found no Product for the Ingredient at the store. It isn't asked
+    again until the latest of these is a few weeks old."""
 
     __tablename__ = "product_miss"
+    __table_args__ = (Index("ix_product_miss_ingredient_id_store", "ingredient_id", "store"),)
 
-    ingredient_id: Mapped[int] = mapped_column(ForeignKey("ingredient.id"), primary_key=True)
-    store: Mapped[Store] = mapped_column(STORE_TYPE, primary_key=True)
+    id: Mapped[IdPk]
+    ingredient_id: Mapped[int] = mapped_column(ForeignKey("ingredient.id"))
+    store: Mapped[Store] = mapped_column(STORE_TYPE)
     asked_at: Mapped[datetime]
+
+
+class CheckjebonProduct(Base):
+    """One Jumbo product in our copy of Checkjebon's data.
+
+    The copy is replaced whenever Checkjebon's data changes; `price_observation` keeps the
+    history of the prices we used.
+    """
+
+    __tablename__ = "checkjebon_product"
+    __table_args__ = (
+        Index(
+            "ix_checkjebon_product_name_trgm",
+            func.lower(text("name")),
+            postgresql_using="gin",
+            postgresql_ops={"lower(name)": "gin_trgm_ops"},
+        ),
+    )
+
+    id: Mapped[IdPk]
+    sku: Mapped[str] = mapped_column(unique=True)
+    name: Mapped[str]
+    price_cents: Mapped[int]
+    size: Mapped[str | None]
+    url: Mapped[str]
+
+
+class CheckjebonCheck(Base):
+    """One `refresh_checkjebon` run that read Checkjebon's data: whether it had changed, and
+    whether it had gone stale."""
+
+    __tablename__ = "checkjebon_check"
+
+    id: Mapped[IdPk]
+    checked_at: Mapped[datetime] = mapped_column(index=True)
+    content_hash: Mapped[str]
+    changed: Mapped[bool]
+    stale: Mapped[bool]
+    products: Mapped[int]
+    skipped: Mapped[int]

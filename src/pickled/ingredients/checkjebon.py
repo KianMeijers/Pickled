@@ -1,26 +1,23 @@
 """Jumbo regular prices from Checkjebon's `supermarkets.json` (#15), searched locally.
 
-`refresh_checkjebon` replaces our copy of the Jumbo half; Checkjebon's AH half stopped updating
-in 2025 and is never used. Reading it makes no requests to Jumbo. If the Jumbo half stops
-changing for more than 3 days the copy is flagged stale, as happened upstream to AH.
+`refresh_checkjebon` replaces our copy of the Jumbo half when it has changed; Checkjebon's AH
+half stopped updating in 2025 and is never used. Reading it makes no requests to Jumbo.
+Checkjebon updates daily, so a refresh that finds the data unchanged for more than 3 days marks
+it stale, as happened upstream to AH; the copy is kept either way.
 """
 
 import hashlib
 import json
-from dataclasses import dataclass
 from datetime import datetime, timedelta
-from decimal import Decimal
 from typing import Any
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import CheckConstraint, Index, delete, func, select, text
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Mapped, Session, mapped_column
+from sqlalchemy import delete, exists, func, select
+from sqlalchemy.orm import Session
 
-from pickled.db import Base
-from pickled.ingredients.models import PriceSource
-from pickled.ingredients.prices import PricesUnavailable, ProductCandidate
+from pickled.ingredients.models import CheckjebonCheck, CheckjebonProduct, PriceSource
+from pickled.ingredients.prices import PricesUnavailable, ProductCandidate, euro_cents
 from pickled.stores import Store
 
 DATA_URL = "https://raw.githubusercontent.com/supermarkt/checkjebon/main/data/supermarkets.json"
@@ -37,48 +34,9 @@ class CheckjebonError(Exception):
     """A download that doesn't look like Checkjebon's data; the last copy is kept."""
 
 
-class CheckjebonProduct(Base):
-    """One Jumbo product in our copy of Checkjebon, replaced on each changed refresh."""
+class Listing(BaseModel):
+    """A product as Checkjebon lists it."""
 
-    __tablename__ = "checkjebon_product"
-    __table_args__ = (
-        Index(
-            "ix_checkjebon_product_name_trgm",
-            func.lower(text("name")),
-            postgresql_using="gin",
-            postgresql_ops={"lower(name)": "gin_trgm_ops"},
-        ),
-    )
-
-    sku: Mapped[str] = mapped_column(primary_key=True)
-    name: Mapped[str]
-    price_cents: Mapped[int]
-    size: Mapped[str | None]
-    url: Mapped[str]
-
-
-class CheckjebonState(Base):
-    """The single row saying when our copy was last checked and when its data last changed."""
-
-    __tablename__ = "checkjebon_state"
-    __table_args__ = (CheckConstraint("id = 1", name="single_row"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True, default=1)
-    checked_at: Mapped[datetime]
-    changed_at: Mapped[datetime]
-    content_hash: Mapped[str]
-    product_count: Mapped[int]
-
-
-@dataclass(frozen=True)
-class CheckjebonRefresh:
-    products: int
-    skipped: int
-    changed: bool
-    stale: bool
-
-
-class Item(BaseModel):
     model_config = ConfigDict(strict=True, extra="ignore")
 
     name: str = Field(alias="n")
@@ -94,56 +52,54 @@ def download_checkjebon(client: httpx.Client) -> Any:
     return response.json()
 
 
-def refresh_checkjebon(session: Session, data: Any, *, now: datetime) -> CheckjebonRefresh:
-    """Replace our Jumbo copy with `data`'s, unless it is unchanged; or raise `CheckjebonError`."""
-    store = _jumbo(data)
-    items = store.get("d")
-    if not isinstance(items, list) or not items:
+def refresh_checkjebon(session: Session, data: Any, *, now: datetime) -> CheckjebonCheck:
+    """Replace our Jumbo copy with `data`'s if it changed, and record the check.
+
+    Raises `CheckjebonError`, recording nothing, if `data` doesn't look like Checkjebon's.
+    """
+    jumbo = _jumbo_data(data)
+    listings = jumbo.get("d")
+    if not isinstance(listings, list) or not listings:
         raise CheckjebonError("Checkjebon's Jumbo data has no products")
-    prefix = store.get("u") or ""
+    prefix = jumbo.get("u") or ""
     products: dict[str, CheckjebonProduct] = {}
     skipped = 0
-    for raw in items:
+    for raw in listings:
         try:
-            item = Item.model_validate(raw)
+            product = _product(Listing.model_validate(raw), prefix)
         except ValidationError:
             skipped += 1
             continue
-        product = _product(item, prefix)
         products[product.sku] = product
-    if not products or skipped > MAX_SKIPPED_SHARE * len(items):
-        raise CheckjebonError(f"{skipped} of {len(items)} Checkjebon Jumbo products are unreadable")
+    if not products or skipped > MAX_SKIPPED_SHARE * len(listings):
+        raise CheckjebonError(
+            f"{skipped} of {len(listings)} Checkjebon Jumbo products are unreadable"
+        )
 
-    content_hash = hashlib.sha256(json.dumps(items, sort_keys=True).encode()).hexdigest()
-    state = session.get(CheckjebonState, 1)
-    changed = state is None or state.content_hash != content_hash
+    content_hash = hashlib.sha256(json.dumps(listings, sort_keys=True).encode()).hexdigest()
+    last = _last_check(session)
+    changed = last is None or last.content_hash != content_hash
     if changed:
         session.execute(delete(CheckjebonProduct))
         session.add_all(products.values())
-        values = dict(
-            checked_at=now, changed_at=now, content_hash=content_hash, product_count=len(products)
-        )
-        session.execute(
-            insert(CheckjebonState)
-            .values(id=1, **values)
-            .on_conflict_do_update(index_elements=[CheckjebonState.id], set_=values)
-        )
-    else:
-        assert state is not None
-        state.checked_at = now
-    session.flush()
-    return CheckjebonRefresh(
+    last_change = now if changed else _last_change(session)
+    check = CheckjebonCheck(
+        checked_at=now,
+        content_hash=content_hash,
+        changed=changed,
+        stale=last_change is not None and now - last_change > STALE_AFTER,
         products=len(products),
         skipped=skipped,
-        changed=changed,
-        stale=checkjebon_stale(session, now=now),
     )
+    session.add(check)
+    session.flush()
+    return check
 
 
-def checkjebon_stale(session: Session, *, now: datetime) -> bool:
-    """Whether our Jumbo copy's data hasn't changed for more than 3 days."""
-    changed_at = session.scalar(select(CheckjebonState.changed_at))
-    return changed_at is not None and now - changed_at > STALE_AFTER
+def checkjebon_stale(session: Session) -> bool:
+    """Whether the last refresh found Checkjebon's Jumbo data unchanged for over 3 days."""
+    last = _last_check(session)
+    return last is not None and last.stale
 
 
 class CheckjebonJumboPriceSource:
@@ -172,11 +128,11 @@ class CheckjebonJumboPriceSource:
 
     def current(self, session: Session, sku: str) -> ProductCandidate | None:
         _require_copy(session)
-        row = session.get(CheckjebonProduct, sku)
+        row = session.scalars(select(CheckjebonProduct).where(CheckjebonProduct.sku == sku)).first()
         return _candidate(row) if row is not None else None
 
 
-def _jumbo(data: Any) -> dict:
+def _jumbo_data(data: Any) -> dict:
     if not isinstance(data, list):
         raise CheckjebonError("Checkjebon's data is not a list of stores")
     for store in data:
@@ -185,14 +141,14 @@ def _jumbo(data: Any) -> dict:
     raise CheckjebonError("Checkjebon's data has no Jumbo")
 
 
-def _product(item: Item, prefix: str) -> CheckjebonProduct:
+def _product(listing: Listing, prefix: str) -> CheckjebonProduct:
     # A Jumbo link ends in the product's SKU: "jumbo-kipfilet-ca-215-g-596629KGR".
     return CheckjebonProduct(
-        sku=item.link.rsplit("-", 1)[-1],
-        name=item.name,
-        price_cents=int((Decimal(str(item.price)) * 100).to_integral_value()),
-        size=item.size.strip() or None,
-        url=prefix + item.link,
+        sku=listing.link.rsplit("-", 1)[-1],
+        name=listing.name,
+        price_cents=euro_cents(listing.price),
+        size=listing.size.strip() or None,
+        url=prefix + listing.link,
     )
 
 
@@ -202,6 +158,20 @@ def _candidate(row: CheckjebonProduct) -> ProductCandidate:
     )
 
 
+def _last_check(session: Session) -> CheckjebonCheck | None:
+    return session.scalars(
+        select(CheckjebonCheck)
+        .order_by(CheckjebonCheck.checked_at.desc(), CheckjebonCheck.id.desc())
+        .limit(1)
+    ).first()
+
+
+def _last_change(session: Session) -> datetime | None:
+    return session.scalar(
+        select(func.max(CheckjebonCheck.checked_at)).where(CheckjebonCheck.changed)
+    )
+
+
 def _require_copy(session: Session) -> None:
-    if session.get(CheckjebonState, 1) is None:
+    if not session.scalar(select(exists().where(CheckjebonCheck.changed))):
         raise PricesUnavailable("Checkjebon's Jumbo prices haven't been downloaded yet")

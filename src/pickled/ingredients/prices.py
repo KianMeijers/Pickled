@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import timedelta
+from decimal import Decimal
 from typing import Protocol
 
 from sqlalchemy.orm import Session
@@ -19,6 +20,11 @@ class ProductCandidate:
     price_cents: int
     pack_size: str | None = None
     url: str | None = None
+
+
+def euro_cents(euros: float) -> int:
+    """Cents from a store's price in euros, which its data gives as a float."""
+    return int((Decimal(str(euros)) * 100).to_integral_value())
 
 
 class PricesUnavailable(Exception):

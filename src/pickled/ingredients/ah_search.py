@@ -6,14 +6,13 @@ one more Deal fetch, so AH price lookups never starve the Deals a Meal Plan is d
 
 from collections.abc import Callable
 from datetime import datetime, timedelta
-from decimal import Decimal
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from pickled.ingredients.models import PriceSource
-from pickled.ingredients.prices import PricesUnavailable, ProductCandidate
+from pickled.ingredients.prices import PricesUnavailable, ProductCandidate, euro_cents
 from pickled.stores import (
     AMSTERDAM,
     REQUEST_BUDGET,
@@ -21,7 +20,7 @@ from pickled.stores import (
     Store,
     requests_this_week,
 )
-from pickled.stores.appie import API, anonymous_headers
+from pickled.stores.appie import API, DEAL_FETCH_REQUESTS, anonymous_headers
 
 PRODUCT_URL = "https://www.ah.nl/producten/product/wi{webshop_id}"
 SHORTLIST_SIZE = 50
@@ -41,8 +40,9 @@ class AhSearchPriceSource:
     store = Store.AH
     price_source = PriceSource.AH_SEARCH
     refresh_after = timedelta(weeks=4)
-    # The requests an AH Deal fetch needs (`AhDealSource.requests_per_fetch`).
-    reserved_for_deals = 25
+    # Lookups always leave one Deal fetch's requests. The week starts on Monday, so Monday's
+    # fetch always has its budget, and this keeps Thursday's, which the draft is made from.
+    reserved_for_deals = DEAL_FETCH_REQUESTS
 
     def __init__(
         self,
@@ -100,7 +100,7 @@ def _candidate(product: SearchProduct) -> ProductCandidate:
     return ProductCandidate(
         sku=f"wi{product.webshop_id}",
         name=product.title,
-        price_cents=int((Decimal(str(product.price_before_bonus)) * 100).to_integral_value()),
+        price_cents=euro_cents(product.price_before_bonus),
         pack_size=product.unit_size,
         url=PRODUCT_URL.format(webshop_id=product.webshop_id),
     )

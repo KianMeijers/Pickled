@@ -3,6 +3,8 @@
 import httpx
 
 API = "https://api.ah.nl"
+# The requests one AH Deal fetch makes: a token, the metadata and each category's section.
+DEAL_FETCH_REQUESTS = 25
 # The headers the Appie iOS app sends; the User-Agent comes from `make_client`.
 APP_HEADERS = {
     "x-application": "AHWEBSHOP",

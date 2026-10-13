@@ -1,5 +1,6 @@
 """`price_for` and `set_product`: an Ingredient's price at a store, through its chosen Product."""
 
+import json
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -16,9 +17,12 @@ from pickled.ingredients import (
     Product,
     ProductCandidate,
     ProductPicker,
+    open_product_picker,
     price_for,
+    refresh_checkjebon,
     set_product,
 )
+from pickled.llm import LlmCall, Role
 from pickled.stores import Store
 
 AMSTERDAM = ZoneInfo("Europe/Amsterdam")
@@ -114,7 +118,12 @@ def test_a_chosen_products_latest_price_is_its_price(db_session, kipfilet):
 
     price = price_for(db_session, kipfilet, Store.AH, on=SATURDAY, picker=picker(ah()))
 
-    assert (price.cents, price.product, price.store, price.rough) == (599, product, Store.AH, False)
+    assert (price.cents, price.product, price.product.store, price.rough) == (
+        599,
+        product,
+        Store.AH,
+        False,
+    )
 
 
 def test_a_price_older_than_eight_weeks_is_rough(db_session, kipfilet):
@@ -183,7 +192,7 @@ def test_without_a_product_at_the_store_the_other_stores_price_is_used_as_rough(
 
     price = price_for(db_session, kipfilet, Store.AH, on=SATURDAY, picker=prices)
 
-    assert (price.cents, price.product, price.store, price.rough) == (
+    assert (price.cents, price.product, price.product.store, price.rough) == (
         386,
         jumbo_fillet,
         Store.JUMBO,
@@ -238,8 +247,8 @@ def test_with_the_ah_budget_spent_the_jumbo_price_is_used_and_ah_is_asked_again_
         picker=picker(ah(FILLET), replies=[pick("wi1")]),
     )
 
-    assert (price.store, price.cents, price.rough) == (Store.JUMBO, 386, True)
-    assert (later.store, later.cents, later.rough) == (Store.AH, 599, False)
+    assert (price.product.store, price.cents, price.rough) == (Store.JUMBO, 386, True)
+    assert (later.product.store, later.cents, later.rough) == (Store.AH, 599, False)
 
 
 def test_a_price_older_than_the_sources_refresh_age_is_looked_up_again(db_session, kipfilet):
@@ -302,3 +311,17 @@ def test_set_product_chooses_even_after_the_store_was_found_to_have_none(db_sess
     product = set_product(db_session, kipfilet, Store.AH, "plakjes zijn prima", picker=prices)
 
     assert price_for(db_session, kipfilet, Store.AH, on=SATURDAY, picker=prices).product == product
+
+
+def test_the_app_picker_uses_the_match_model_as_pick_product(db_session, sessions, kipfilet):
+    from test_checkjebon import FIXTURE as CHECKJEBON
+
+    refresh_checkjebon(db_session, json.loads(CHECKJEBON.read_text()), now=NOW)
+    fake = FakeChatModel(replies=[pick("596629KGR")])
+
+    with open_product_picker(sessions, build=lambda name, settings: fake) as prices:
+        price = price_for(db_session, kipfilet, Store.JUMBO, on=SATURDAY, picker=prices)
+
+    assert price.cents == 386
+    [call] = db_session.scalars(select(LlmCall))
+    assert call.role is Role.PICK_PRODUCT

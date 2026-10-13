@@ -8,20 +8,18 @@ from pickled.jobs.deals import run_fetch_deals, run_tag_deals
 from pickled.jobs.prices import run_refresh_checkjebon
 
 # What `pickled jobs run <job> [--source …]` can run by hand: the jobs run per store take a
-# source, and the others don't.
+# source, and the store-wide ones don't.
 PER_STORE = {"fetch_deals": run_fetch_deals, "tag_deals": run_tag_deals}
-ONCE = {"refresh_checkjebon": run_refresh_checkjebon}
-RUNNABLE = PER_STORE.keys() | ONCE.keys()
+STORE_WIDE = {"refresh_checkjebon": run_refresh_checkjebon}
+RUNNABLE = PER_STORE.keys() | STORE_WIDE.keys()
 
 
 def run_job(name: str, source: str | None = None) -> None:
     """Run job `name` now, in this process, instead of queueing it."""
     if name in PER_STORE:
         PER_STORE[name](source)
-    elif source is not None:
-        raise ValueError(f"{name} is not run per store, so it takes no source")
     else:
-        ONCE[name]()
+        STORE_WIDE[name]()
 
 
 def run_worker() -> None:

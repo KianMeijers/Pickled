@@ -19,11 +19,13 @@ DEAL_WEEK = timedelta(days=7)
 
 @dataclass(frozen=True)
 class Price:
-    """A regular pack price for an Ingredient. A rough one is old, or from the other store."""
+    """A regular pack price for an Ingredient, of `product` at its store.
+
+    A rough one is old, or from the other store.
+    """
 
     cents: int
     product: Product
-    store: Store
     observed_at: datetime
     rough: bool
 
@@ -58,7 +60,6 @@ def _store_price(
     return Price(
         cents=observation.price_cents,
         product=product,
-        store=store,
         observed_at=observation.observed_at,
         rough=on - observation.observed_at.astimezone(AMSTERDAM).date() > ROUGH_AFTER,
     )

@@ -1,4 +1,4 @@
-"""Regular prices: product_miss, and the Checkjebon copy of Jumbo's prices
+"""Regular prices: product_miss, and the Checkjebon copy of Jumbo's prices and its checks
 
 Revision ID: 0006
 Revises: 0005
@@ -22,6 +22,7 @@ store = postgresql.ENUM("ah", "jumbo", name="store", create_type=False)
 def upgrade() -> None:
     op.create_table(
         "product_miss",
+        sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
         sa.Column("ingredient_id", sa.BigInteger(), nullable=False),
         sa.Column("store", store, nullable=False),
         sa.Column("asked_at", sa.DateTime(timezone=True), nullable=False),
@@ -30,17 +31,22 @@ def upgrade() -> None:
             ["ingredient.id"],
             name=op.f("fk_product_miss_ingredient_id_ingredient"),
         ),
-        sa.PrimaryKeyConstraint("ingredient_id", "store", name=op.f("pk_product_miss")),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_product_miss")),
+    )
+    op.create_index(
+        "ix_product_miss_ingredient_id_store", "product_miss", ["ingredient_id", "store"]
     )
 
     op.create_table(
         "checkjebon_product",
+        sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
         sa.Column("sku", sa.String(), nullable=False),
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("price_cents", sa.BigInteger(), nullable=False),
         sa.Column("size", sa.String(), nullable=True),
         sa.Column("url", sa.String(), nullable=False),
-        sa.PrimaryKeyConstraint("sku", name=op.f("pk_checkjebon_product")),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_checkjebon_product")),
+        sa.UniqueConstraint("sku", name=op.f("uq_checkjebon_product_sku")),
     )
     # For the trigram shortlist of Jumbo products by name.
     op.create_index(
@@ -51,19 +57,23 @@ def upgrade() -> None:
     )
 
     op.create_table(
-        "checkjebon_state",
-        sa.Column("id", sa.BigInteger(), nullable=False),
+        "checkjebon_check",
+        sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
         sa.Column("checked_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("changed_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("content_hash", sa.String(), nullable=False),
-        sa.Column("product_count", sa.BigInteger(), nullable=False),
-        sa.CheckConstraint("id = 1", name=op.f("ck_checkjebon_state_single_row")),
-        sa.PrimaryKeyConstraint("id", name=op.f("pk_checkjebon_state")),
+        sa.Column("changed", sa.Boolean(), nullable=False),
+        sa.Column("stale", sa.Boolean(), nullable=False),
+        sa.Column("products", sa.BigInteger(), nullable=False),
+        sa.Column("skipped", sa.BigInteger(), nullable=False),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_checkjebon_check")),
     )
+    op.create_index(op.f("ix_checkjebon_check_checked_at"), "checkjebon_check", ["checked_at"])
 
 
 def downgrade() -> None:
-    op.drop_table("checkjebon_state")
+    op.drop_index(op.f("ix_checkjebon_check_checked_at"), table_name="checkjebon_check")
+    op.drop_table("checkjebon_check")
     op.drop_index("ix_checkjebon_product_name_trgm", table_name="checkjebon_product")
     op.drop_table("checkjebon_product")
+    op.drop_index("ix_product_miss_ingredient_id_store", table_name="product_miss")
     op.drop_table("product_miss")

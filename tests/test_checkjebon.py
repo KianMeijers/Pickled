@@ -105,14 +105,24 @@ def test_data_unchanged_for_more_than_three_days_is_stale(db_session, data):
 
     assert (three_days.changed, three_days.stale) == (False, False)
     assert (four_days.changed, four_days.stale) == (False, True)
-    assert checkjebon_stale(db_session, now=NOW + timedelta(days=4))
+    assert checkjebon_stale(db_session)
     jumbo_products(data)[0]["p"] = 3.99
     refresh_checkjebon(db_session, data, now=NOW + timedelta(days=5))
-    assert not checkjebon_stale(db_session, now=NOW + timedelta(days=5))
+    assert not checkjebon_stale(db_session)
 
 
 def test_checkjebon_is_not_stale_before_its_first_refresh(db_session):
-    assert not checkjebon_stale(db_session, now=NOW)
+    assert not checkjebon_stale(db_session)
+
+
+def test_changed_data_stays_fresh_until_a_later_refresh_finds_it_unchanged(db_session, data):
+    """Refreshed weekly, the copy is days old between runs without being stale."""
+    refresh_checkjebon(db_session, data, now=NOW - timedelta(days=7))
+    jumbo_products(data)[0]["p"] = 3.99
+
+    refresh_checkjebon(db_session, data, now=NOW)
+
+    assert not checkjebon_stale(db_session)
 
 
 @pytest.mark.parametrize(

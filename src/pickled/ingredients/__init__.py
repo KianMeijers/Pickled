@@ -8,7 +8,6 @@ from pickled.ingredients.ah_search import AhSearchPriceSource
 from pickled.ingredients.checkjebon import (
     CheckjebonError,
     CheckjebonJumboPriceSource,
-    CheckjebonRefresh,
     checkjebon_stale,
     download_checkjebon,
     refresh_checkjebon,
@@ -20,9 +19,16 @@ from pickled.ingredients.lookup import (
     ingredient_names,
     resolve_ingredient,
 )
-from pickled.ingredients.models import Aisle, Ingredient, PriceObservation, PriceSource, Product
+from pickled.ingredients.models import (
+    Aisle,
+    CheckjebonCheck,
+    Ingredient,
+    PriceObservation,
+    PriceSource,
+    Product,
+)
 from pickled.ingredients.observations import record_regular_price
-from pickled.ingredients.picking import ProductPicker, set_product
+from pickled.ingredients.picking import ProductPicker, open_product_picker, set_product
 from pickled.ingredients.prices import PricesUnavailable, ProductCandidate, RegularPriceSource
 from pickled.ingredients.pricing import Price, price_for
 
@@ -32,7 +38,7 @@ __all__ = [
     "Aisle",
     "CheckjebonError",
     "CheckjebonJumboPriceSource",
-    "CheckjebonRefresh",
+    "CheckjebonCheck",
     "Ingredient",
     "NewIngredient",
     "Price",
@@ -47,6 +53,7 @@ __all__ = [
     "download_checkjebon",
     "find_ingredient",
     "ingredient_names",
+    "open_product_picker",
     "price_for",
     "record_regular_price",
     "refresh_checkjebon",

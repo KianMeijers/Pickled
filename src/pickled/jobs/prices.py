@@ -21,7 +21,7 @@ SCHEDULE = "0 16 * * 4"
 DOWNLOAD_TIMEOUT_SECONDS = 120
 
 
-def download() -> Any:
+def download_from_github() -> Any:
     """Checkjebon's data from GitHub: no request to any store, so it isn't counted."""
     with httpx.Client(timeout=DOWNLOAD_TIMEOUT_SECONDS, follow_redirects=True) as client:
         return download_checkjebon(client)
@@ -31,20 +31,20 @@ def refresh_checkjebon_now(
     sessions: sessionmaker[Session],
     *,
     now: datetime,
-    download: Callable[[], Any] = download,
+    download: Callable[[], Any] = download_from_github,
 ) -> None:
     """Replace our Jumbo prices with Checkjebon's, or raise and keep the last copy."""
     data = download()
     with sessions.begin() as session:
-        refresh = refresh_checkjebon(session, data, now=now)
-    logger.info(
-        "refresh_checkjebon: %d Jumbo products, %d skipped, %s",
-        refresh.products,
-        refresh.skipped,
-        "changed" if refresh.changed else "unchanged",
-    )
-    if refresh.stale:
-        logger.warning("refresh_checkjebon: Jumbo's data hasn't changed in over 3 days: stale")
+        check = refresh_checkjebon(session, data, now=now)
+        logger.info(
+            "refresh_checkjebon: %d Jumbo products, %d skipped, %s",
+            check.products,
+            check.skipped,
+            "changed" if check.changed else "unchanged",
+        )
+        if check.stale:
+            logger.warning("refresh_checkjebon: Jumbo's data hasn't changed in over 3 days: stale")
 
 
 @app.task(name="refresh_checkjebon", retry=RetryStrategy(max_attempts=2, wait=1800))

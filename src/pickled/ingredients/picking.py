@@ -5,19 +5,23 @@ is stored and reused across Meal Plans.
 """
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Generator, Mapping
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, sessionmaker
 
+from pickled.config import Settings
+from pickled.ingredients.ah_search import AhSearchPriceSource
+from pickled.ingredients.checkjebon import CheckjebonJumboPriceSource
 from pickled.ingredients.models import Ingredient, PriceObservation, Product, ProductMiss
 from pickled.ingredients.prices import PricesUnavailable, ProductCandidate, RegularPriceSource
-from pickled.stores import AMSTERDAM, Store
+from pickled.llm import Role, make_chat_model, runware_model
+from pickled.stores import AMSTERDAM, Store, make_client
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +70,7 @@ class ProductPicker:
 
     def chosen(self, session: Session, ingredient: Ingredient, store: Store) -> Product | None:
         """The Product chosen for `ingredient` at `store`, picked now if it has none yet."""
-        product = _chosen(session, ingredient, store)
+        product = _current_product(session, ingredient, store)
         if product is not None or self._missed_recently(session, ingredient, store):
             return product
         return self._pick(session, ingredient, store)
@@ -76,7 +80,11 @@ class ProductPicker:
     ) -> Product | None:
         """Choose again for `ingredient` at `store`, as `hint` asks; None keeps the choice."""
         return self._pick(
-            session, ingredient, store, current=_chosen(session, ingredient, store), hint=hint
+            session,
+            ingredient,
+            store,
+            current=_current_product(session, ingredient, store),
+            hint=hint,
         )
 
     def refresh(self, session: Session, product: Product) -> None:
@@ -110,7 +118,7 @@ class ProductPicker:
 
     def _missed_recently(self, session: Session, ingredient: Ingredient, store: Store) -> bool:
         asked_at = session.scalar(
-            select(ProductMiss.asked_at).where(
+            select(func.max(ProductMiss.asked_at)).where(
                 ProductMiss.ingredient_id == ingredient.id, ProductMiss.store == store
             )
         )
@@ -147,7 +155,7 @@ class ProductPicker:
         if choice is None or choice.sku is None:
             logger.info("pick_product %s at %s: no Product", ingredient.name, store)
             if current is None:
-                self._missed(session, ingredient, store, now)
+                session.add(ProductMiss(ingredient_id=ingredient.id, store=store, asked_at=now))
             return None
         candidate = candidates.get(choice.sku)
         if candidate is None:
@@ -158,11 +166,6 @@ class ProductPicker:
                 return current
             current.replaced_at = now
             session.flush()
-        session.execute(
-            delete(ProductMiss).where(
-                ProductMiss.ingredient_id == ingredient.id, ProductMiss.store == store
-            )
-        )
         product = Product(
             ingredient_id=ingredient.id,
             store=store,
@@ -184,16 +187,6 @@ class ProductPicker:
         )
         return product
 
-    def _missed(self, session: Session, ingredient: Ingredient, store: Store, now: datetime):
-        session.execute(
-            insert(ProductMiss)
-            .values(ingredient_id=ingredient.id, store=store, asked_at=now)
-            .on_conflict_do_update(
-                index_elements=[ProductMiss.ingredient_id, ProductMiss.store],
-                set_={"asked_at": now},
-            )
-        )
-
 
 def set_product(
     session: Session, ingredient: Ingredient, store: Store, hint: str, *, picker: ProductPicker
@@ -206,7 +199,7 @@ def set_product(
     return picker.set_product(session, ingredient, store, hint)
 
 
-def _chosen(session: Session, ingredient: Ingredient, store: Store) -> Product | None:
+def _current_product(session: Session, ingredient: Ingredient, store: Store) -> Product | None:
     return session.scalars(
         select(Product).where(
             Product.ingredient_id == ingredient.id,
@@ -237,3 +230,18 @@ def _describe(candidate: ProductCandidate) -> str:
     if candidate.pack_size:
         parts.append(candidate.pack_size)
     return " | ".join(parts)
+
+
+@contextmanager
+def open_product_picker(
+    sessions: sessionmaker[Session],
+    *,
+    build: Callable[[str, Settings], BaseChatModel] = runware_model,
+) -> Generator[ProductPicker]:
+    """The app's `ProductPicker`: AH search through a counted client, our Checkjebon copy for
+    Jumbo, and the match model in its `pick_product` role. `build` makes the model, so tests
+    can pass a fake one."""
+    model = make_chat_model(Role.PICK_PRODUCT, sessions=sessions, build=build)
+    with make_client(Store.AH, sessions) as client:
+        sources = {Store.AH: AhSearchPriceSource(client), Store.JUMBO: CheckjebonJumboPriceSource()}
+        yield ProductPicker(sources, model)

@@ -21,14 +21,14 @@ from pickled.deals.sources import (
     StrictModel,
 )
 from pickled.stores import Store
-from pickled.stores.appie import API, APP_HEADERS, anonymous_headers
+from pickled.stores.appie import API, APP_HEADERS, DEAL_FETCH_REQUESTS, anonymous_headers
 
 NATIONAL = "NATIONAL"
 
 
 class AhDealSource:
     store = Store.AH
-    requests_per_fetch = 25
+    requests_per_fetch = DEAL_FETCH_REQUESTS
 
     def __init__(self, client: httpx.Client):
         self.client = client
