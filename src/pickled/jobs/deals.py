@@ -9,12 +9,13 @@ import httpx
 from langchain_core.language_models import BaseChatModel
 from procrastinate import RetryStrategy
 from procrastinate.exceptions import AlreadyEnqueued
+from procrastinate.tasks import Task
 from sqlalchemy.orm import Session, sessionmaker
 
 from pickled.db import default_sessions
 from pickled.deals import DealSource, save_fetch, source_for, tag_deals
 from pickled.jobs.app import app, schedule
-from pickled.llm import Role, llm_context, make_chat_model
+from pickled.llm import Role, llm_context, make_chat_model, out_of_credit
 from pickled.stores import (
     AMSTERDAM,
     REQUEST_BUDGET,
@@ -42,6 +43,15 @@ class FetchRetry(RetryStrategy):
 
     def get_retry_decision(self, *, exception, job):
         if isinstance(exception, RequestBudgetExceeded):
+            return None
+        return super().get_retry_decision(exception=exception, job=job)
+
+
+class LlmJobRetry(RetryStrategy):
+    """Retry a failed LLM job, but not once Runware's credit has run out (spec §9)."""
+
+    def get_retry_decision(self, *, exception, job):
+        if out_of_credit(exception):
             return None
         return super().get_retry_decision(exception=exception, job=job)
 
@@ -104,7 +114,7 @@ def tag_deals_now(
         )
 
 
-@app.task(name="tag_deals", retry=RetryStrategy(max_attempts=2, wait=600))
+@app.task(name="tag_deals", retry=LlmJobRetry(max_attempts=2, wait=600))
 def tag_deals_job(source: str) -> None:
     logger.info("tag_deals %s: start", source)
     tag_deals_now(Store(source), default_sessions(), now=datetime.now(AMSTERDAM))
@@ -120,7 +130,7 @@ def run_tag_deals(source: str | None) -> None:
     _run_for_stores(tag_deals_job, source)
 
 
-def _run_for_stores(job: Callable[..., None], source: str | None) -> None:
+def _run_for_stores(job: Task, source: str | None) -> None:
     """Run `job` for `source`, or for every store.
 
     One store failing doesn't stop the others; the first failure is raised once all have run.

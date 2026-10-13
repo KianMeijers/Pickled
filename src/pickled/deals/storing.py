@@ -79,11 +79,13 @@ def deals_valid_on(
     channel: Channel = Channel.IN_STORE,
 ) -> list[Deal]:
     """The Deals valid on `on` that can be used in `channel`, leaving out withdrawn ones."""
-    query = select(Deal).where(*valid_on(on, store, channel))
+    query = select(Deal).where(*valid_on_conditions(on, store, channel))
     return list(session.scalars(query.order_by(Deal.store, Deal.id)))
 
 
-def valid_on(on: date, store: Store | None, channel: Channel) -> list[ColumnElement[bool]]:
+def valid_on_conditions(
+    on: date, store: Store | None, channel: Channel
+) -> list[ColumnElement[bool]]:
     """The conditions for a Deal being valid on `on` in `channel`, at `store` if given."""
     conditions = [
         Deal.valid_from <= on,

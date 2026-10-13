@@ -5,19 +5,18 @@ written to `llm_call` with its cost from `price_of` (ADR 0009), labelled with wh
 through `llm_context`.
 """
 
-from pickled.llm.context import LlmContext, current_llm_context, llm_context
+from pickled.llm.context import llm_context
+from pickled.llm.errors import out_of_credit
 from pickled.llm.factory import make_chat_model
 from pickled.llm.models import LlmCall, Role
-from pickled.llm.prices import PRICES, TokenUsage, price_of
+from pickled.llm.prices import TokenUsage, price_of
 
 __all__ = [
-    "PRICES",
     "LlmCall",
-    "LlmContext",
     "Role",
     "TokenUsage",
-    "current_llm_context",
     "llm_context",
     "make_chat_model",
+    "out_of_credit",
     "price_of",
 ]

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from pickled.deals.models import Deal, DealIngredient
 from pickled.deals.sources import Channel
-from pickled.deals.storing import valid_on
+from pickled.deals.storing import valid_on_conditions
 from pickled.ingredients import (
     Aisle,
     Ingredient,
@@ -119,7 +119,7 @@ def deals_by_ingredient(
         select(Ingredient, Deal)
         .join(DealIngredient, DealIngredient.ingredient_id == Ingredient.id)
         .join(Deal, Deal.id == DealIngredient.deal_id)
-        .where(*valid_on(on, store, channel))
+        .where(*valid_on_conditions(on, store, channel))
         .order_by(Ingredient.name, Deal.store, Deal.id)
     )
     found: dict[Ingredient, list[Deal]] = {}

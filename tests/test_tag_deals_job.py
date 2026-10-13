@@ -3,6 +3,8 @@
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+import anthropic
+import httpx2
 import pytest
 from fakes import FakeChatModel, tool_call
 from sqlalchemy import select
@@ -10,7 +12,7 @@ from sqlalchemy import select
 import pickled.jobs.deals
 from pickled.cli import main
 from pickled.deals import Channel, Deal, DealRecord, FetchRejected, FetchResult, save_fetch
-from pickled.jobs.deals import fetch_deals, tag_deals_now
+from pickled.jobs.deals import fetch_deals, tag_deals_job, tag_deals_now
 from pickled.llm import LlmCall, Role, make_chat_model
 from pickled.stores import Store
 
@@ -103,3 +105,26 @@ def test_jobs_run_tag_deals_without_a_source_tags_every_store(tagged):
     main(["jobs", "run", "tag_deals"])
 
     assert tagged == [Store.AH, Store.JUMBO]
+
+
+class Attempt:
+    def __init__(self, attempts):
+        self.attempts = attempts
+
+
+def retried(exception) -> bool:
+    decision = tag_deals_job.retry_strategy.get_retry_decision(exception=exception, job=Attempt(0))
+    return decision is not None
+
+
+def test_a_failed_tagging_run_is_retried():
+    assert retried(RuntimeError("the model timed out"))
+
+
+def test_tagging_is_not_retried_once_runware_says_the_credit_has_run_out():
+    request = httpx2.Request("POST", "https://api.runware.ai/v1/messages")
+    no_credit = anthropic.APIStatusError(
+        "Insufficient credit", response=httpx2.Response(402, request=request), body=None
+    )
+
+    assert not retried(no_credit)
