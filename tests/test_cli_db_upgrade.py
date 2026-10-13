@@ -3,7 +3,9 @@ from sqlalchemy import create_engine, text
 from pickled.cli import main
 
 
-def test_db_upgrade_migrates_and_creates_the_langgraph_schema(scratch_database):
+def test_db_upgrade_migrates_and_creates_the_langgraph_and_procrastinate_schemas(
+    scratch_database,
+):
     main(["db", "upgrade"])
 
     engine = create_engine(scratch_database)
@@ -12,7 +14,7 @@ def test_db_upgrade_migrates_and_creates_the_langgraph_schema(scratch_database):
             conn.execute(
                 text(
                     "SELECT table_schema || '.' || table_name FROM information_schema.tables "
-                    "WHERE table_schema IN ('public', 'langgraph')"
+                    "WHERE table_schema IN ('public', 'langgraph', 'procrastinate')"
                 )
             ).scalars()
         )
@@ -21,6 +23,7 @@ def test_db_upgrade_migrates_and_creates_the_langgraph_schema(scratch_database):
 
     assert "public.alembic_version" in tables
     assert "langgraph.checkpoints" in tables
+    assert "procrastinate.procrastinate_jobs" in tables
     assert "pg_trgm" in extensions
 
 

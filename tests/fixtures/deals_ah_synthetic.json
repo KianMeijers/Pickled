@@ -1,0 +1,251 @@
+{
+ "metadata": {
+  "periods": [
+   {
+    "bonusStartDate": "2026-10-12",
+    "bonusEndDate": "2026-10-18",
+    "tabs": [
+     {
+      "description": "Alle bonus",
+      "urlMetadataList": [
+       {
+        "url": "/mobile-services/bonuspage/v2/section?category=Vlees",
+        "count": 3,
+        "bonusType": "NATIONAL",
+        "description": "Vlees"
+       },
+       {
+        "url": "/mobile-services/bonuspage/v2/section?category=Groente, aardappelen",
+        "count": 2,
+        "bonusType": "NATIONAL",
+        "description": "Groente, aardappelen"
+       },
+       {
+        "url": "/mobile-services/bonuspage/v2/section?category=Online aanbiedingen",
+        "count": 4,
+        "bonusType": "AHONLINE",
+        "description": "Online aanbiedingen"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "bonusStartDate": "2026-10-19",
+    "bonusEndDate": "2026-10-25",
+    "tabs": [
+     {
+      "description": "Alle bonus",
+      "urlMetadataList": [
+       {
+        "url": "/mobile-services/bonuspage/v2/section?category=Kaas",
+        "count": 5,
+        "bonusType": "NATIONAL",
+        "description": "Kaas"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "sections": {
+  "Vlees": {
+   "sectionType": "BONUS",
+   "sectionDescription": "Vlees",
+   "bonusGroupOrProducts": [
+    {
+     "bonusGroup": {
+      "id": "814121",
+      "segmentDescription": "Alle AH Greenfields beefburgers 2 stuks",
+      "bonusStartDate": "2026-10-12",
+      "bonusEndDate": "2026-10-18",
+      "validityPeriod": {
+       "start": "2026-10-12",
+       "end": "2026-10-18",
+       "code": "FROM_WEEKDAY"
+      },
+      "discountDescription": "VOOR 2.49",
+      "discountLabels": [],
+      "category": "Vlees",
+      "promotionType": "NATIONAL",
+      "storeOnlyPromotion": false,
+      "products": [],
+      "images": [],
+      "exampleFromPrice": 3.29,
+      "exampleForPrice": 2.49
+     }
+    },
+    {
+     "product": {
+      "webshopId": 123456,
+      "hqId": 124456,
+      "title": "AH Scharrel kipfilet",
+      "brand": "AH",
+      "salesUnitSize": "500 g",
+      "unitPriceDescription": "",
+      "currentPrice": 5.99,
+      "priceBeforeBonus": 7.99,
+      "isBonus": true,
+      "bonusMechanism": "25% KORTING",
+      "mainCategory": "Vlees, vis",
+      "subCategory": "Kip",
+      "bonusStartDate": "2026-10-12",
+      "bonusEndDate": "2026-10-18",
+      "images": [],
+      "storeOnlyPromotion": true
+     }
+    },
+    {
+     "bonusGroup": {
+      "id": "815000",
+      "segmentDescription": "Alle Unox rookworsten",
+      "bonusStartDate": "2026-10-12",
+      "bonusEndDate": "2026-10-18",
+      "validityPeriod": {
+       "start": "2026-10-12",
+       "end": "2026-10-18",
+       "code": "FROM_WEEKDAY"
+      },
+      "discountDescription": "1 + 1 GRATIS",
+      "discountLabels": [],
+      "category": "Vlees",
+      "promotionType": "NATIONAL",
+      "storeOnlyPromotion": false,
+      "products": [
+       {
+        "webshopId": 345678,
+        "hqId": 346678,
+        "title": "Unox Gelderse rookworst",
+        "brand": "AH",
+        "salesUnitSize": "275 g",
+        "unitPriceDescription": "",
+        "currentPrice": 3.49,
+        "priceBeforeBonus": 3.49,
+        "isBonus": true,
+        "bonusMechanism": "1 + 1 GRATIS",
+        "mainCategory": "Vlees, vis",
+        "subCategory": "Kip",
+        "bonusStartDate": "2026-10-12",
+        "bonusEndDate": "2026-10-18",
+        "images": []
+       },
+       {
+        "webshopId": 345679,
+        "hqId": 346679,
+        "title": "Unox Rookworst mager",
+        "brand": "AH",
+        "salesUnitSize": "250 g",
+        "unitPriceDescription": "",
+        "currentPrice": 3.69,
+        "priceBeforeBonus": 3.69,
+        "isBonus": true,
+        "bonusMechanism": "1 + 1 GRATIS",
+        "mainCategory": "Vlees, vis",
+        "subCategory": "Kip",
+        "bonusStartDate": "2026-10-12",
+        "bonusEndDate": "2026-10-18",
+        "images": []
+       }
+      ],
+      "images": []
+     }
+    },
+    {
+     "bonusGroup": {
+      "id": "816000",
+      "discountDescription": "25% KORTING",
+      "bonusStartDate": "2026-10-12",
+      "bonusEndDate": "2026-10-18",
+      "products": []
+     }
+    }
+   ]
+  },
+  "Groente, aardappelen": {
+   "sectionType": "BONUS",
+   "sectionDescription": "Groente, aardappelen",
+   "bonusGroupOrProducts": [
+    {
+     "product": {
+      "webshopId": 234567,
+      "hqId": 235567,
+      "title": "AH Kastanjechampignons",
+      "brand": "AH",
+      "salesUnitSize": "250 g",
+      "unitPriceDescription": "",
+      "currentPrice": 1.99,
+      "priceBeforeBonus": 1.99,
+      "isBonus": true,
+      "bonusMechanism": "2E HALVE PRIJS",
+      "mainCategory": "Vlees, vis",
+      "subCategory": "Kip",
+      "bonusStartDate": "2026-10-12",
+      "bonusEndDate": "2026-10-18",
+      "images": []
+     }
+    },
+    {
+     "bonusGroup": {
+      "id": "817000",
+      "segmentDescription": "Alle AH aardappelen",
+      "bonusStartDate": "2026-10-12",
+      "bonusEndDate": "2026-10-18",
+      "validityPeriod": {
+       "start": "2026-10-12",
+       "end": "2026-10-18",
+       "code": "FROM_WEEKDAY"
+      },
+      "discountDescription": "2 VOOR 5.00",
+      "discountLabels": [],
+      "category": "Vlees",
+      "promotionType": "NATIONAL",
+      "storeOnlyPromotion": false,
+      "products": [],
+      "images": []
+     }
+    },
+    {
+     "bonusGroup": {
+      "id": "818000",
+      "segmentDescription": "AH Spotlight soep",
+      "bonusStartDate": "2026-10-12",
+      "bonusEndDate": "2026-10-18",
+      "validityPeriod": {
+       "start": "2026-10-12",
+       "end": "2026-10-18",
+       "code": "FROM_WEEKDAY"
+      },
+      "discountDescription": "VOOR 1.99",
+      "discountLabels": [],
+      "category": "Vlees",
+      "promotionType": "SPOTLIGHT",
+      "storeOnlyPromotion": false,
+      "products": [],
+      "images": []
+     }
+    },
+    {
+     "bonusGroup": {
+      "id": "814121",
+      "segmentDescription": "Alle AH Greenfields beefburgers 2 stuks",
+      "bonusStartDate": "2026-10-12",
+      "bonusEndDate": "2026-10-18",
+      "validityPeriod": {
+       "start": "2026-10-12",
+       "end": "2026-10-18",
+       "code": "FROM_WEEKDAY"
+      },
+      "discountDescription": "VOOR 2.49",
+      "discountLabels": [],
+      "category": "Vlees",
+      "promotionType": "NATIONAL",
+      "storeOnlyPromotion": false,
+      "products": [],
+      "images": []
+     }
+    }
+   ]
+  }
+ }
+}

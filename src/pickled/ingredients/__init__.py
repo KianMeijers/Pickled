@@ -11,6 +11,7 @@ from pickled.ingredients.lookup import (
     resolve_ingredient,
 )
 from pickled.ingredients.models import Aisle, Ingredient, PriceObservation, PriceSource, Product
+from pickled.ingredients.observations import record_regular_price
 from pickled.ingredients.prices import ProductCandidate, RegularPriceSource
 
 __all__ = [
@@ -24,5 +25,6 @@ __all__ = [
     "ProductCandidate",
     "RegularPriceSource",
     "find_ingredient",
+    "record_regular_price",
     "resolve_ingredient",
 ]

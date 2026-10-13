@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy import create_engine
 
 # Import every module's tables so they register on Base.metadata.
+import pickled.deals  # noqa: F401
 import pickled.ingredients  # noqa: F401
 import pickled.stores  # noqa: F401
 from pickled.config import Settings

@@ -7,9 +7,10 @@
 
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Annotated
 
-from sqlalchemy import BigInteger, DateTime, Identity, MetaData, Numeric
+from sqlalchemy import BigInteger, DateTime, Enum, Identity, MetaData, Numeric
 from sqlalchemy.orm import DeclarativeBase, mapped_column
 
 IdPk = Annotated[int, mapped_column(BigInteger, Identity(), primary_key=True)]
@@ -30,3 +31,8 @@ class Base(DeclarativeBase):
         datetime: DateTime(timezone=True),
         Decimal: Numeric,
     }
+
+
+def pg_enum(enum: type[StrEnum], name: str) -> Enum:
+    """A Postgres enum type named `name` that stores the members' values."""
+    return Enum(enum, name=name, values_callable=lambda members: [m.value for m in members])
