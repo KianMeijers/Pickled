@@ -1,0 +1,17 @@
+# The fresh-harvest months of Dutch storage crops: our own list, not taken from the
+# Voedingscentrum calendar (ADR 0003). When the calendar lists one of these crops in a month
+# outside its harvest months, the import tags it `stored`: harvested earlier and sold from
+# storage. Names are as the calendar writes them; case, spaces and hyphens are ignored.
+# Crops harvested from the field all winter (prei, pastinaak, boerenkool) are not listed.
+
+[fresh_harvest_months]
+appel = [8, 9, 10]
+peer = [8, 9, 10]
+ui = [7, 8, 9]
+wortel = [6, 7, 8, 9, 10, 11]
+"rode biet" = [7, 8, 9, 10]
+knolselderij = [9, 10, 11]
+koolraap = [10, 11, 12]
+rodekool = [8, 9, 10, 11]
+"witte kool" = [8, 9, 10, 11]
+pompoen = [8, 9, 10]

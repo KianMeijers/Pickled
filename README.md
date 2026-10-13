@@ -12,7 +12,15 @@ uv sync                    # create .venv and install dependencies
 cp .env.example .env       # then add your RUNWARE_API_KEY
 docker compose up -d       # start Postgres (also creates the pickled_test database)
 uv run pickled db upgrade  # run migrations and set up the langgraph and procrastinate schemas
+uv run pickled seasonal import  # load Seasonal Produce from the Voedingscentrum calendar
 ```
+
+Seasonal Produce comes from the Voedingscentrum seizoenskalender, whose terms forbid
+publishing a copy, so it is never committed (ADR 0003). `pickled seasonal import` reads the
+page into your own database; run it again whenever you want to refresh it. It fails without
+changing anything if the page has changed shape, and Pickled runs without it. Which crops
+are sold from storage outside their harvest months is our own list, in
+`src/pickled/seasonal/storage_crops.toml`.
 
 ## Running
 
