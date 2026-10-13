@@ -87,3 +87,14 @@ class PriceObservation(Base):
     observed_at: Mapped[datetime]
 
     product: Mapped[Product] = relationship(back_populates="price_observations")
+
+
+class ProductMiss(Base):
+    """The match model found no Product for the Ingredient at the store, so it isn't asked
+    again until this is old. Replaced by any later answer."""
+
+    __tablename__ = "product_miss"
+
+    ingredient_id: Mapped[int] = mapped_column(ForeignKey("ingredient.id"), primary_key=True)
+    store: Mapped[Store] = mapped_column(STORE_TYPE, primary_key=True)
+    asked_at: Mapped[datetime]

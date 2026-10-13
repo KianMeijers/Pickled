@@ -5,14 +5,23 @@ All schedules are in Europe/Amsterdam time.
 
 from pickled.jobs.app import app
 from pickled.jobs.deals import run_fetch_deals, run_tag_deals
+from pickled.jobs.prices import run_refresh_checkjebon
 
-# What `pickled jobs run <job> [--source …]` can run by hand.
-RUNNABLE = {"fetch_deals": run_fetch_deals, "tag_deals": run_tag_deals}
+# What `pickled jobs run <job> [--source …]` can run by hand: the jobs run per store take a
+# source, and the others don't.
+PER_STORE = {"fetch_deals": run_fetch_deals, "tag_deals": run_tag_deals}
+ONCE = {"refresh_checkjebon": run_refresh_checkjebon}
+RUNNABLE = PER_STORE.keys() | ONCE.keys()
 
 
 def run_job(name: str, source: str | None = None) -> None:
     """Run job `name` now, in this process, instead of queueing it."""
-    RUNNABLE[name](source)
+    if name in PER_STORE:
+        PER_STORE[name](source)
+    elif source is not None:
+        raise ValueError(f"{name} is not run per store, so it takes no source")
+    else:
+        ONCE[name]()
 
 
 def run_worker() -> None:
@@ -20,4 +29,4 @@ def run_worker() -> None:
     app.run_worker()
 
 
-__all__ = ["RUNNABLE", "app", "run_job", "run_worker"]
+__all__ = ["PER_STORE", "RUNNABLE", "app", "run_job", "run_worker"]
