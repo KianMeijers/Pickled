@@ -4,6 +4,7 @@ The page is a made-up fixture in the shape of the Voedingscentrum page: the real
 never committed (ADR 0003).
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -90,7 +91,10 @@ def test_importing_again_replaces_the_seasonal_produce(db_session, page):
 
 BROKEN_PAGES = {
     "no calendar on the page": lambda page: page.replace('"FAQPage"', '"WebPage"'),
-    "a month missing": lambda page: page.replace('"name": "Mei"', '"name": "Juni"'),
+    "a month listed twice": lambda page: page.replace('"name": "Mei"', '"name": "Juni"'),
+    "a month missing": lambda page: re.sub(
+        r'\{"@type": "Question", "name": "Mei".*?\} \},\n', "", page, flags=re.DOTALL
+    ),
     "a month name it doesn't know": lambda page: page.replace('"name": "Mei"', '"name": "Mai"'),
     "a list it doesn't know": lambda page: page.replace("Seizoensfruit", "Seizoenskruiden", 1),
     "a month without its fruit": lambda page: page.replace("<h3>Seizoensfruit</h3>", "", 1),
@@ -142,3 +146,13 @@ def test_a_month_lists_fresh_produce_before_stored_then_by_name(db_session, page
 
 def test_before_any_import_a_month_has_no_seasonal_produce(db_session):
     assert seasonal_for(db_session, 1) == []
+
+
+def test_a_storage_crop_is_matched_through_the_ingredient_catalogue(db_session, page):
+    db_session.add(Ingredient(name="wortel", aliases=["peen"], aisle=Aisle.GROENTE_FRUIT))
+    db_session.flush()
+
+    import_calendar(db_session, page.replace("Wortel", "Peen"), storage_crops=STORAGE_CROPS)
+
+    assert produce(db_session, 1)["wortel"] is Freshness.STORED
+    assert produce(db_session, 9)["wortel"] is Freshness.FRESH

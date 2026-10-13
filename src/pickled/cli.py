@@ -1,6 +1,7 @@
 import argparse
 import logging
 
+import httpx
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -51,16 +52,16 @@ def main(argv: list[str] | None = None) -> None:
 
 def import_seasonal_produce() -> None:
     """Download the calendar and replace Seasonal Produce with it in one transaction."""
-    page = seasonal.download_calendar()
     engine = create_engine(Settings().database_url)
     try:
+        page = seasonal.download_calendar()
         with Session(engine) as session, session.begin():
             summary = seasonal.import_calendar(session, page)
-    except seasonal.CalendarError as error:
+    except (httpx.HTTPError, seasonal.CalendarError) as error:
         raise SystemExit(f"Seasonal Produce not imported, the old data is kept: {error}") from error
     finally:
         engine.dispose()
     print(
-        f"Imported {summary.entries} Seasonal Produce entries for {summary.ingredients} "
+        f"Imported {summary.produce} Seasonal Produce entries for {summary.ingredients} "
         f"Ingredients ({summary.stored} stored)."
     )

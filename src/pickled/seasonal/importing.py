@@ -1,6 +1,5 @@
 """`import_calendar`: replace all Seasonal Produce with what the calendar lists."""
 
-import re
 import tomllib
 from collections.abc import Mapping, Set
 from dataclasses import dataclass
@@ -9,7 +8,7 @@ from pathlib import Path
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from pickled.ingredients import Aisle, NewIngredient, resolve_ingredient
+from pickled.ingredients import Aisle, NewIngredient, find_ingredient, resolve_ingredient
 from pickled.seasonal.calendar import parse_calendar
 from pickled.seasonal.models import Freshness, SeasonalProduce
 
@@ -17,12 +16,14 @@ PRODUCE = NewIngredient(aisle=Aisle.GROENTE_FRUIT)
 STORAGE_CROPS_FILE = Path(__file__).parent / "storage_crops.toml"
 
 # Produce sold all year is not Seasonal Produce, even if the calendar lists it.
-YEAR_ROUND = {"aardappel", "aardappelen"}
+YEAR_ROUND = ("aardappel",)
+# The harvest months of anything that isn't a storage crop: it is always fresh when listed.
+ALL_YEAR = frozenset(range(1, 13))
 
 
 @dataclass(frozen=True)
 class ImportSummary:
-    entries: int
+    produce: int
     stored: int
     ingredients: int
 
@@ -36,42 +37,48 @@ def import_calendar(
     replacement all or nothing.
 
     `storage_crops` maps a crop's name to its fresh-harvest months; by default, the committed
-    `storage_crops.toml`.
+    `storage_crops.toml`. A storage crop listed outside them is stored.
     """
     entries = parse_calendar(page)
     if storage_crops is None:
         storage_crops = load_storage_crops()
-    storage_crops = {crop_key(name): months for name, months in storage_crops.items()}
     session.execute(delete(SeasonalProduce))
-    # Two names can be one Ingredient; it is fresh in a month if either name is.
-    freshness: dict[tuple[int, int], Freshness] = {}
-    for entry in entries:
-        if crop_key(entry.name) in YEAR_ROUND:
-            continue
-        ingredient = resolve_ingredient(session, entry.name, PRODUCE)
-        harvest = storage_crops.get(crop_key(entry.name))
-        stored = harvest is not None and entry.month not in harvest
-        key = (ingredient.id, entry.month)
-        if not stored or key not in freshness:
-            freshness[key] = Freshness.STORED if stored else Freshness.FRESH
-    session.add_all(
-        SeasonalProduce(ingredient_id=ingredient_id, month=month, freshness=tag)
-        for (ingredient_id, month), tag in freshness.items()
-    )
+    # Two names can be one Ingredient, so rows are kept per (Ingredient, month).
+    listed = {
+        (resolve_ingredient(session, entry.name, PRODUCE).id, entry.month) for entry in entries
+    }
+    # Storage crops and staples are matched through the catalogue, so aliases count too.
+    harvest_months = {
+        ingredient.id: months
+        for name, months in storage_crops.items()
+        if (ingredient := find_ingredient(session, name)) is not None
+    }
+    year_round = {
+        ingredient.id
+        for name in YEAR_ROUND
+        if (ingredient := find_ingredient(session, name)) is not None
+    }
+    rows = [
+        SeasonalProduce(
+            ingredient_id=ingredient_id,
+            month=month,
+            freshness=Freshness.STORED
+            if month not in harvest_months.get(ingredient_id, ALL_YEAR)
+            else Freshness.FRESH,
+        )
+        for ingredient_id, month in sorted(listed)
+        if ingredient_id not in year_round
+    ]
+    session.add_all(rows)
     session.flush()
     return ImportSummary(
-        entries=len(freshness),
-        stored=sum(tag is Freshness.STORED for tag in freshness.values()),
-        ingredients=len({ingredient_id for ingredient_id, _month in freshness}),
+        produce=len(rows),
+        stored=sum(row.freshness is Freshness.STORED for row in rows),
+        ingredients=len({row.ingredient_id for row in rows}),
     )
 
 
-def load_storage_crops(path: Path = STORAGE_CROPS_FILE) -> dict[str, frozenset[int]]:
-    """Each storage crop's fresh-harvest months, from a file like `storage_crops.toml`."""
-    crops = tomllib.loads(path.read_text())["fresh_harvest_months"]
+def load_storage_crops() -> dict[str, frozenset[int]]:
+    """Each storage crop's fresh-harvest months, from the committed `storage_crops.toml`."""
+    crops = tomllib.loads(STORAGE_CROPS_FILE.read_text())["fresh_harvest_months"]
     return {name: frozenset(months) for name, months in crops.items()}
-
-
-def crop_key(name: str) -> str:
-    """`name` lowercased without spaces or hyphens, the same rule as `ingredient_key`."""
-    return re.sub(r"[\s-]+", "", name.lower())
