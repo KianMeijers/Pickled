@@ -8,7 +8,7 @@ date that it no longer lists is withdrawn (never deleted).
 
 from datetime import date, datetime
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import ColumnElement, delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -79,15 +79,23 @@ def deals_valid_on(
     channel: Channel = Channel.IN_STORE,
 ) -> list[Deal]:
     """The Deals valid on `on` that can be used in `channel`, leaving out withdrawn ones."""
-    query = select(Deal).where(
+    query = select(Deal).where(*valid_on_conditions(on, store, channel))
+    return list(session.scalars(query.order_by(Deal.store, Deal.id)))
+
+
+def valid_on_conditions(
+    on: date, store: Store | None, channel: Channel
+) -> list[ColumnElement[bool]]:
+    """The conditions for a Deal being valid on `on` in `channel`, at `store` if given."""
+    conditions = [
         Deal.valid_from <= on,
         Deal.valid_to >= on,
         Deal.withdrawn_at.is_(None),
         Deal.channel.in_([channel, Channel.BOTH]),
-    )
+    ]
     if store is not None:
-        query = query.where(Deal.store == store)
-    return list(session.scalars(query.order_by(Deal.store, Deal.id)))
+        conditions.append(Deal.store == store)
+    return conditions
 
 
 def _check(session: Session, result: FetchResult) -> None:

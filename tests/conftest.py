@@ -1,12 +1,14 @@
 import os
 
 import pytest
+from procrastinate.testing import InMemoryConnector
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL, make_url
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from pickled import migrate
 from pickled.config import Settings
+from pickled.jobs import app
 
 
 def database_url(name: str) -> URL:
@@ -55,3 +57,17 @@ def db_session(test_engine):
         finally:
             session.close()
             transaction.rollback()
+
+
+@pytest.fixture
+def sessions(db_session):
+    """A sessionmaker whose sessions work in savepoints of `db_session`'s transaction."""
+    return sessionmaker(bind=db_session.connection(), join_transaction_mode="create_savepoint")
+
+
+@pytest.fixture(autouse=True)
+def job_queue():
+    """An in-memory job queue, so no test queues a job on a real database."""
+    connector = InMemoryConnector()
+    with app.replace_connector(connector):
+        yield connector

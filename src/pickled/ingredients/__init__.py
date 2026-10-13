@@ -8,6 +8,7 @@ from pickled.ingredients.lookup import (
     TRIGRAM_THRESHOLD,
     NewIngredient,
     find_ingredient,
+    ingredient_names,
     resolve_ingredient,
 )
 from pickled.ingredients.models import Aisle, Ingredient, PriceObservation, PriceSource, Product
@@ -25,6 +26,7 @@ __all__ = [
     "ProductCandidate",
     "RegularPriceSource",
     "find_ingredient",
+    "ingredient_names",
     "record_regular_price",
     "resolve_ingredient",
 ]

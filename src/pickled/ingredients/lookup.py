@@ -60,6 +60,11 @@ def find_ingredient(session: Session, name: str) -> Ingredient | None:
     return None
 
 
+def ingredient_names(session: Session) -> list[str]:
+    """The name of every Ingredient in the catalogue, in alphabetical order."""
+    return list(session.scalars(select(Ingredient.name).order_by(Ingredient.name)))
+
+
 def resolve_ingredient(session: Session, name: str, new: NewIngredient) -> Ingredient:
     """The Ingredient `name` refers to, created from `new` if the catalogue has no match."""
     found = find_ingredient(session, name)

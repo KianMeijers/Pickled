@@ -27,12 +27,16 @@ are sold from storage outside their harvest months is our own list, in
 ```bash
 uv run pickled worker                               # background jobs and their schedules
 uv run pickled jobs run fetch_deals [--source ah]   # rerun a job by hand, in this process
+uv run pickled jobs run tag_deals [--source ah]     # link untagged Deals to Ingredients
 ```
+
+A finished `fetch_deals` queues `tag_deals` for its store, which the worker runs.
 
 ## Development
 
 ```bash
 uv run pytest              # tests, against the pickled_test database in Compose Postgres
+uv run pytest -m live      # live tests: call Runware for real (costs a fraction of a cent)
 uv run ruff check .        # lint
 uv run ruff format .       # format
 uv run alembic revision --autogenerate -m "add x"  # draft a new migration
@@ -41,7 +45,8 @@ uv run python scripts/record_deal_fixture.py jumbo  # record a real Deals payloa
 
 Every request to AH or Jumbo, including fixture recording, counts against the store's
 budget of 60 requests a week (ADR 0005). Tests read recorded fixtures and never hit the
-network.
+network. Tests build models through `make_chat_model(role, build=...)` with a fake chat
+model, so they never call Runware either; only `-m live` does.
 
 The test database is migrated once per test run, and each test runs in a transaction
 that is rolled back, so tests never see each other's data.

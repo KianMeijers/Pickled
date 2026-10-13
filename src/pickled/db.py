@@ -8,10 +8,13 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
+from functools import cache
 from typing import Annotated
 
-from sqlalchemy import BigInteger, DateTime, Enum, Identity, MetaData, Numeric
-from sqlalchemy.orm import DeclarativeBase, mapped_column
+from sqlalchemy import BigInteger, DateTime, Enum, Identity, MetaData, Numeric, create_engine
+from sqlalchemy.orm import DeclarativeBase, Session, mapped_column, sessionmaker
+
+from pickled.config import Settings
 
 IdPk = Annotated[int, mapped_column(BigInteger, Identity(), primary_key=True)]
 
@@ -36,3 +39,9 @@ class Base(DeclarativeBase):
 def pg_enum(enum: type[StrEnum], name: str) -> Enum:
     """A Postgres enum type named `name` that stores the members' values."""
     return Enum(enum, name=name, values_callable=lambda members: [m.value for m in members])
+
+
+@cache
+def default_sessions() -> sessionmaker[Session]:
+    """Sessions on the app's database, for code that runs outside a request or a test."""
+    return sessionmaker(create_engine(Settings().database_url))

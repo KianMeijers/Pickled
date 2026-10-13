@@ -1,18 +1,21 @@
-"""`fetch_deals(source)`: fetch one store's Deals and store them (spec §6)."""
+"""`fetch_deals(source)` fetches one store's Deals and stores them; `tag_deals(source)` then
+links them to Ingredients with the match model (spec §6)."""
 
 import logging
 from collections.abc import Callable
 from datetime import datetime
-from functools import cache
 
 import httpx
+from langchain_core.language_models import BaseChatModel
 from procrastinate import RetryStrategy
-from sqlalchemy import create_engine
+from procrastinate.exceptions import AlreadyEnqueued
+from procrastinate.tasks import Task
 from sqlalchemy.orm import Session, sessionmaker
 
-from pickled.config import Settings
-from pickled.deals import DealSource, save_fetch, source_for
+from pickled.db import default_sessions
+from pickled.deals import DealSource, save_fetch, source_for, tag_deals
 from pickled.jobs.app import app, schedule
+from pickled.llm import Role, llm_context, make_chat_model, out_of_credit
 from pickled.stores import (
     AMSTERDAM,
     REQUEST_BUDGET,
@@ -44,9 +47,13 @@ class FetchRetry(RetryStrategy):
         return super().get_retry_decision(exception=exception, job=job)
 
 
-@cache
-def default_sessions() -> sessionmaker[Session]:
-    return sessionmaker(create_engine(Settings().database_url))
+class LlmJobRetry(RetryStrategy):
+    """Retry a failed LLM job, but not once Runware's credit has run out (spec §9)."""
+
+    def get_retry_decision(self, *, exception, job):
+        if out_of_credit(exception):
+            return None
+        return super().get_retry_decision(exception=exception, job=job)
 
 
 def fetch_deals_now(
@@ -83,19 +90,57 @@ def fetch_deals_now(
 def fetch_deals(source: str, timestamp: int | None = None) -> None:
     logger.info("fetch_deals %s: start", source)
     fetch_deals_now(Store(source), default_sessions(), now=datetime.now(AMSTERDAM))
+    try:
+        tag_deals_job.configure(queueing_lock=f"tag_deals:{source}").defer(source=source)
+    except AlreadyEnqueued:
+        logger.info("tag_deals %s: already queued", source)
+
+
+def tag_deals_now(
+    store: Store,
+    sessions: sessionmaker[Session],
+    *,
+    now: datetime,
+    model: BaseChatModel | None = None,
+) -> None:
+    """Link `store`'s untagged current Deals to Ingredients, or mark them non-food."""
+    with llm_context(job="tag_deals"):
+        tag_deals(
+            sessions,
+            store,
+            model or make_chat_model(Role.TAG_DEALS, sessions=sessions),
+            on=now.astimezone(AMSTERDAM).date(),
+            now=now,
+        )
+
+
+@app.task(name="tag_deals", retry=LlmJobRetry(max_attempts=2, wait=600))
+def tag_deals_job(source: str) -> None:
+    logger.info("tag_deals %s: start", source)
+    tag_deals_now(Store(source), default_sessions(), now=datetime.now(AMSTERDAM))
 
 
 def run_fetch_deals(source: str | None) -> None:
-    """Run `fetch_deals` here and now for `source`, or for every store.
+    """Run `fetch_deals` here and now for `source`, or for every store."""
+    _run_for_stores(fetch_deals, source)
+
+
+def run_tag_deals(source: str | None) -> None:
+    """Run `tag_deals` here and now for `source`, or for every store."""
+    _run_for_stores(tag_deals_job, source)
+
+
+def _run_for_stores(job: Task, source: str | None) -> None:
+    """Run `job` for `source`, or for every store.
 
     One store failing doesn't stop the others; the first failure is raised once all have run.
     """
     errors = []
     for store in [Store(source)] if source else list(Store):
         try:
-            fetch_deals(source=store.value)
+            job(source=store.value)
         except Exception as error:
-            logger.exception("fetch_deals %s: failed", store)
+            logger.exception("%s %s: failed", job.name, store)
             errors.append(error)
     if errors:
         raise errors[0]
