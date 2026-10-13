@@ -11,7 +11,7 @@ from pickled.stores.store import Store
 
 # AH is read through the Appie app's API, so it sees the app; Jumbo is read from its website.
 USER_AGENTS = {
-    Store.AH: "Appie/8.22.3 (iPhone; iOS 17.4; Scale/3.00)",
+    Store.AH: "Appie/9.28 (iPhone17,3; iPhone; CPU OS 26_1 like Mac OS X)",
     Store.JUMBO: (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
         "(KHTML, like Gecko) Version/17.4 Safari/605.1.15"

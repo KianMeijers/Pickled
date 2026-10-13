@@ -2,16 +2,12 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import Enum, ForeignKey, Index, Text, func, text
+from sqlalchemy import ForeignKey, Index, Text, func, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from pickled.db import Base, IdPk
+from pickled.db import Base, IdPk, pg_enum
 from pickled.stores.store import STORE_TYPE, Store
-
-
-def pg_enum(enum: type[StrEnum], name: str) -> Enum:
-    return Enum(enum, name=name, values_callable=lambda members: [m.value for m in members])
 
 
 class Aisle(StrEnum):

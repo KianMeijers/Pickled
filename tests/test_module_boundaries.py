@@ -10,6 +10,7 @@ PACKAGE = Path(__file__).parents[1] / "src" / "pickled"
 FORBIDDEN = {
     "stores": {"ingredients", "deals", "seasonal", "planning", "taste", "agent", "web", "jobs"},
     "ingredients": {"deals", "seasonal", "planning", "taste", "agent", "web", "jobs"},
+    "deals": {"seasonal", "planning", "taste", "agent", "web", "jobs"},
 }
 
 
