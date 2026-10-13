@@ -4,10 +4,10 @@ All schedules are in Europe/Amsterdam time.
 """
 
 from pickled.jobs.app import app
-from pickled.jobs.deals import run_fetch_deals
+from pickled.jobs.deals import run_fetch_deals, run_tag_deals
 
 # What `pickled jobs run <job> [--source …]` can run by hand.
-RUNNABLE = {"fetch_deals": run_fetch_deals}
+RUNNABLE = {"fetch_deals": run_fetch_deals, "tag_deals": run_tag_deals}
 
 
 def run_job(name: str, source: str | None = None) -> None:

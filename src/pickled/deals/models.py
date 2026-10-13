@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pickled.db import Base, IdPk, pg_enum
 from pickled.deals.discounts import DiscountKind
 from pickled.deals.sources import Channel
+from pickled.ingredients import Ingredient
 from pickled.stores.store import STORE_TYPE, Store
 
 
@@ -76,3 +77,23 @@ class DealFetch(Base):
     parsed_count: Mapped[int]
     skipped_count: Mapped[int]
     withdrawn_count: Mapped[int]
+
+
+class DealIngredient(Base):
+    """A link `tag_deals` made: the Deal is for this Ingredient, or, with none, isn't food.
+
+    A Deal with no rows here hasn't been tagged yet.
+    """
+
+    __tablename__ = "deal_ingredient"
+    __table_args__ = (
+        UniqueConstraint("deal_id", "ingredient_id", postgresql_nulls_not_distinct=True),
+    )
+
+    id: Mapped[IdPk]
+    deal_id: Mapped[int] = mapped_column(ForeignKey("deal.id"))
+    ingredient_id: Mapped[int | None] = mapped_column(ForeignKey("ingredient.id"), index=True)
+    tagged_at: Mapped[datetime]
+
+    deal: Mapped[Deal] = relationship()
+    ingredient: Mapped[Ingredient | None] = relationship()

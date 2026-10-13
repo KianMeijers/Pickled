@@ -42,3 +42,6 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Live tests call real services and spend money: run them with `pytest -m live`.
+addopts = ["-m", "not live"]
+markers = ["live: calls a real outside service; skipped unless run with `-m live`"]

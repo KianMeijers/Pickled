@@ -4,7 +4,6 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy.orm import sessionmaker
 
 from pickled.deals import Channel, DealRecord, FetchRejected, FetchResult, deals_valid_on
 from pickled.jobs import app
@@ -37,11 +36,6 @@ def deal(source_id):
         valid_to=date(2026, 10, 18),
         channel=Channel.BOTH,
     )
-
-
-@pytest.fixture
-def sessions(db_session):
-    return sessionmaker(bind=db_session.connection(), join_transaction_mode="create_savepoint")
 
 
 def test_a_run_fetches_todays_deals_and_stores_them(db_session, sessions):
