@@ -28,6 +28,7 @@ from pickled.ingredients.models import (
     Product,
 )
 from pickled.ingredients.observations import record_regular_price
+from pickled.ingredients.packs import PackSize, PackUnit, parse_pack_size
 from pickled.ingredients.picking import ProductPicker, open_product_picker, set_product
 from pickled.ingredients.prices import PricesUnavailable, ProductCandidate, RegularPriceSource
 from pickled.ingredients.pricing import Price, price_for
@@ -41,6 +42,8 @@ __all__ = [
     "CheckjebonCheck",
     "Ingredient",
     "NewIngredient",
+    "PackSize",
+    "PackUnit",
     "Price",
     "PriceObservation",
     "PriceSource",
@@ -54,6 +57,7 @@ __all__ = [
     "find_ingredient",
     "ingredient_names",
     "open_product_picker",
+    "parse_pack_size",
     "price_for",
     "record_regular_price",
     "refresh_checkjebon",
