@@ -1,7 +1,8 @@
 """The AH regular-price adapter against an Appie product search payload.
 
 The fixture is synthetic, built from the fields our research (#15) saw live and gwillem/appie-go
-documents, because api.ah.nl refused requests while the AH Deals adapter was built.
+documents, because api.ah.nl refused requests while the AH Deals adapter was built. Both
+endpoints' shapes were since checked live.
 """
 
 import json
@@ -39,8 +40,9 @@ def source(sessions, sent):
         payload = json.loads(FIXTURE.read_text())
         ids = parse_qs(urlsplit(str(request.url)).query).get("ids")
         if ids:
+            # Unlike the search, a lookup by id answers with a bare list of products.
             wanted = {int(i) for i in ids}
-            payload["products"] = [p for p in payload["products"] if p["webshopId"] in wanted]
+            payload = [p for p in payload["products"] if p["webshopId"] in wanted]
         return httpx.Response(200, json=payload)
 
     client = make_client(

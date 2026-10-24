@@ -6,6 +6,7 @@ one more Deal fetch, so AH price lookups never starve the Deals a Meal Plan is d
 
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from typing import Any
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -57,7 +58,11 @@ class AhSearchPriceSource:
     def shortlist(self, session: Session, query: str) -> list[ProductCandidate]:
         """AH's own best matches for `query`, leaving out multipack bundles."""
         products = self._search(
-            session, "/mobile-services/product/search/v2", query=query, size=SHORTLIST_SIZE
+            session,
+            "/mobile-services/product/search/v2",
+            lambda body: body["products"],
+            query=query,
+            size=SHORTLIST_SIZE,
         )
         return [_candidate(product) for product in products if not product.virtual_bundle]
 
@@ -66,12 +71,16 @@ class AhSearchPriceSource:
         products = self._search(
             session,
             "/mobile-services/product/search/v2/products",
+            # A lookup by id answers with a bare list of products.
+            lambda body: body,
             ids=webshop_id,
             sortOn="INPUT_PRODUCT_IDS",
         )
         return next((_candidate(p) for p in products if str(p.webshop_id) == webshop_id), None)
 
-    def _search(self, session: Session, path: str, **params) -> list[SearchProduct]:
+    def _search(
+        self, session: Session, path: str, items_in: Callable[[Any], Any], **params
+    ) -> list[SearchProduct]:
         # The first lookup of a run also needs a token, which is kept for the rest.
         needed = 1 if self._headers is not None else 2
         used = requests_this_week(session, self.store, now=self.clock())
@@ -84,7 +93,9 @@ class AhSearchPriceSource:
                 self._headers = anonymous_headers(self.client)
             response = self.client.get(f"{API}{path}", params=params, headers=self._headers)
             response.raise_for_status()
-            items = response.json()["products"]
+            items = items_in(response.json())
+            if not isinstance(items, list):
+                raise TypeError(f"expected a list of products, got {type(items).__name__}")
         except (httpx.HTTPError, RequestBudgetExceeded, KeyError, TypeError, ValueError) as error:
             raise PricesUnavailable(f"AH product search failed: {error!r}") from error
         products = []
