@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from sqlalchemy import any_, func, literal, select
 from sqlalchemy.orm import Session
 
 from pickled.ingredients import Ingredient, NewIngredient, find_ingredient, resolve_ingredient
@@ -14,6 +15,9 @@ from pickled.planning.models import Recipe, RecipeIngredient, Unit
 CONVERTED = {"kg": (Unit.G, 1000), "l": (Unit.ML, 1000)}
 # Units whose lines need no quantity.
 UNMEASURED = {Unit.PINCH, Unit.TO_TASTE}
+# How closely a search must match some words of a Recipe's title (pg_trgm word_similarity).
+TITLE_MATCH = 0.5
+SEARCH_LIMIT = 10
 
 
 @dataclass(frozen=True)
@@ -80,6 +84,20 @@ def save_recipe(
 
 def get_recipe(session: Session, recipe_id: int) -> Recipe | None:
     return session.get(Recipe, recipe_id)
+
+
+def search_recipes(session: Session, query: str, *, limit: int = SEARCH_LIMIT) -> list[Recipe]:
+    """Saved Recipes tagged `query`, or whose title matches it closely; best match first."""
+    match = func.word_similarity(func.lower(query), func.lower(Recipe.title))
+    tagged = literal(query.strip().lower()) == any_(Recipe.tags)
+    return list(
+        session.scalars(
+            select(Recipe)
+            .where(tagged | (match >= TITLE_MATCH))
+            .order_by(tagged.desc(), match.desc(), Recipe.id.desc())
+            .limit(limit)
+        )
+    )
 
 
 def _stored_amount(line: RecipeLine) -> tuple[Decimal | None, Unit]:

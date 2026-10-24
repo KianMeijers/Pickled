@@ -24,6 +24,7 @@ FORBIDDEN = {
         "jobs",
     },
     "planning": {"seasonal", "llm", "agent", "web", "jobs"},
+    "agent": {"web", "jobs"},
     "llm": {
         "stores",
         "ingredients",
