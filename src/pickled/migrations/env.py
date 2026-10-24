@@ -7,8 +7,10 @@ from sqlalchemy import create_engine
 import pickled.deals  # noqa: F401
 import pickled.ingredients  # noqa: F401
 import pickled.llm  # noqa: F401
+import pickled.planning  # noqa: F401
 import pickled.seasonal  # noqa: F401
 import pickled.stores  # noqa: F401
+import pickled.taste  # noqa: F401
 from pickled.config import Settings
 from pickled.db import Base
 

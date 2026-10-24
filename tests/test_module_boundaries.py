@@ -12,6 +12,18 @@ FORBIDDEN = {
     "ingredients": {"deals", "seasonal", "planning", "taste", "agent", "web", "jobs"},
     "deals": {"seasonal", "planning", "taste", "agent", "web", "jobs"},
     "seasonal": {"stores", "deals", "planning", "taste", "agent", "web", "jobs"},
+    "taste": {
+        "stores",
+        "ingredients",
+        "deals",
+        "seasonal",
+        "planning",
+        "llm",
+        "agent",
+        "web",
+        "jobs",
+    },
+    "planning": {"seasonal", "llm", "agent", "web", "jobs"},
     "llm": {
         "stores",
         "ingredients",

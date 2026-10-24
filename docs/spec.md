@@ -67,11 +67,11 @@ Details: [What is the core data model?](https://github.com/KianMeijers/Pickled/i
 | `household` | taste | single row: `people`, optional name. No `household_id` foreign keys anywhere |
 | `taste_note` | taste | text (≤ 200 chars), `author` (`agent`/`user`), `archived_at`. ~30 active at most |
 | `food_goal` | taste | `kind` (`kcal_per_day`, `protein_g_per_day`, `vegetarian_days_per_week`, `budget_cents_per_week`, `other` + text), `min`/`max`, `active` |
-| `meal_plan` | planning | `week_start` (unique, a Saturday), `status` (`draft`→`accepted`, one way), `accepted_at`, `store`, `people` snapshot, `est_cost_cents` (shopping cost) |
+| `meal_plan` | planning | `week_start` (unique, a Saturday), `status` (`draft`→`accepted`, one way), `accepted_at`, `store`, `people` snapshot, `est_cost_cents` (shopping cost), `drafted_at` (unset on a partial draft) |
 | `meal` | planning | `(meal_plan_id, date)`; `recipe_id` + `servings`, **or** `leftovers_of` → an earlier Meal; deliberately empty days are recorded |
 | `recipe` | planning | immutable: title, base servings, steps (markdown), tags, estimated nutrition per serving, `derived_from_id` |
 | `recipe_ingredient` | planning | `ingredient_id`, quantity, unit (`g`/`ml`/`piece`/`tbsp`/`tsp`/`pinch`/`to_taste`), note |
-| `shopping_list_item` | planning | name, quantity, unit, `source` (`recipe`/`manual`), `deal_id`, store, aisle, `est_price_cents`, rough flag, `checked`. Regenerated when Meals change; manual items and ticks survive, matched by name |
+| `shopping_list_item` | planning | name, `ingredient_id`, quantity, unit, `source` (`recipe`/`manual`), pantry flag, `deal_id`, store, aisle, packs, `est_price_cents`, rough flag, `checked`. Regenerated in place when Meals change; manual items and ticks survive, matched by name |
 | `ingredient` | ingredients | name, aliases, aisle, pantry flag, `grams_per_piece`, `keeps_days` |
 | `product` | ingredients | at most one chosen per (Ingredient, store): store SKU, name, pack size, link |
 | `price_observation` | ingredients | product, price, source (Deal regular price, AH search, Checkjebon), observed at |
@@ -161,7 +161,8 @@ The shape (ADR 0004, ADR 0007, [#11](https://github.com/KianMeijers/Pickled/issu
 - A Recipe may not repeat within 3 weeks.
 - The agent never rewrites a user-written Taste note; it suggests the change in chat instead.
 - Nutrition is checked against a **40% dinner share** of the daily goal per person.
-- Vegetarian days and the budget (shopping cost) are checked exactly.
+- Vegetarian days and the budget (shopping cost) are checked exactly. A day is vegetarian when its Recipe is tagged `vegetarisch`.
+- The split warning adds up what the other store's Deals save on the Shopping List's lines; it fires at €3 or more.
 - A partial draft (call limit hit) stays a draft, and the status line says so.
 
 **Model roles:** `make_chat_model(role)` is the only place a model is built. It uses Runware's base URL, a Bearer `Authorization` header, a 120 s timeout and `max_retries=2`. It also attaches the `llm_call` callback.
