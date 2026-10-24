@@ -30,7 +30,8 @@ Dependencies: replace `anthropic` with `langchain`, `langchain-anthropic` and `l
 
 ```
 src/pickled/
-  stores/       shared HTTP client setup (browser/app User-Agent) + per-store weekly request counter
+  stores/       shared HTTP client setup (browser/app User-Agent), the Appie API's token and headers,
+                per-store weekly request counter
   ingredients/  Ingredient catalogue, Product per store, price observations, lookup chain,
                 RegularPriceSource port (AhSearchPriceSource, CheckjebonJumboPriceSource)
   deals/        DealSource port (AhDealSource, JumboDealSource), discount parsing, upsert/withdraw,
@@ -57,7 +58,7 @@ The conventions:
 - Money in integer cents (LLM spend in USD `numeric`).
 - `timestamptz` for timestamps and `date` for days, with Europe/Amsterdam as the business timezone.
 - Quantities as `numeric`.
-- History is kept forever. The only exception is `deal_fetch`, where the last ~8 per source are kept.
+- History is kept forever. The exceptions are `deal_fetch`, where the last ~8 per source are kept, and `checkjebon_product`, a copy of outside data replaced when it changes (the prices we used stay in `price_observation`).
 
 Details: [What is the core data model?](https://github.com/KianMeijers/Pickled/issues/10).
 
@@ -74,6 +75,9 @@ Details: [What is the core data model?](https://github.com/KianMeijers/Pickled/i
 | `ingredient` | ingredients | name, aliases, aisle, pantry flag, `grams_per_piece`, `keeps_days` |
 | `product` | ingredients | at most one chosen per (Ingredient, store): store SKU, name, pack size, link |
 | `price_observation` | ingredients | product, price, source (Deal regular price, AH search, Checkjebon), observed at |
+| `product_miss` | ingredients | each time the match model found no Product for an (Ingredient, store); not asked again for 4 weeks |
+| `checkjebon_product` | ingredients | our copy of Checkjebon's Jumbo half: SKU, name, price, size, link |
+| `checkjebon_check` | ingredients | each `refresh_checkjebon` run: content hash, changed, stale, counts |
 | `store_request` | stores | per-store, per-week request counter (budget ~60/store/week, ADR 0005 as amended) |
 | `deal` | deals | identity `(store, source_id, valid_from)`; raw text, parsed discount kind + params, effective fraction, channel, store category, optional price/was-price/unit size, `withdrawn_at` |
 | `deal_ingredient` | deals | Deal → Ingredient links from `tag_deals` (or a non-food mark) |

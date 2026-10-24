@@ -7,7 +7,7 @@ through `llm_context`.
 
 from pickled.llm.context import llm_context
 from pickled.llm.errors import out_of_credit
-from pickled.llm.factory import make_chat_model
+from pickled.llm.factory import make_chat_model, runware_model
 from pickled.llm.models import LlmCall, Role
 from pickled.llm.prices import TokenUsage, price_of
 
@@ -19,4 +19,5 @@ __all__ = [
     "make_chat_model",
     "out_of_credit",
     "price_of",
+    "runware_model",
 ]

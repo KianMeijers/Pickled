@@ -27,7 +27,9 @@ def main(argv: list[str] | None = None) -> None:
     run_parser = jobs_commands.add_parser("run", help="run a job now, in this process")
     run_parser.add_argument("job", choices=sorted(jobs.RUNNABLE))
     run_parser.add_argument(
-        "--source", choices=[store.value for store in Store], help="default: every store"
+        "--source",
+        choices=[store.value for store in Store],
+        help="for a job run per store; default: every store",
     )
 
     seasonal_parser = commands.add_parser("seasonal", help="manage Seasonal Produce")
@@ -44,6 +46,8 @@ def main(argv: list[str] | None = None) -> None:
         logging.basicConfig(level=logging.INFO)
         jobs.run_worker()
     elif args.command == "jobs" and args.jobs_command == "run":
+        if args.source and args.job not in jobs.PER_STORE:
+            run_parser.error(f"{args.job} is not run per store, so it takes no --source")
         logging.basicConfig(level=logging.INFO)
         jobs.run_job(args.job, args.source)
     elif args.command == "seasonal" and args.seasonal_command == "import":

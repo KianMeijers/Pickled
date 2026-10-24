@@ -21,34 +21,21 @@ from pickled.deals.sources import (
     StrictModel,
 )
 from pickled.stores import Store
+from pickled.stores.appie import API, APP_HEADERS, DEAL_FETCH_REQUESTS, anonymous_headers
 
-API = "https://api.ah.nl"
-# The headers the Appie iOS app sends; the User-Agent comes from `make_client`.
-APP_HEADERS = {
-    "x-application": "AHWEBSHOP",
-    "x-client-name": "appie-ios",
-    "x-client-version": "9.28",
-    "Accept": "application/json",
-}
 NATIONAL = "NATIONAL"
 
 
 class AhDealSource:
     store = Store.AH
-    requests_per_fetch = 25
+    requests_per_fetch = DEAL_FETCH_REQUESTS
 
     def __init__(self, client: httpx.Client):
         self.client = client
 
     def download(self, on: date) -> dict:
         """The raw payload for `on`: the metadata, and the section of each NATIONAL category."""
-        token = self.client.post(
-            f"{API}/mobile-auth/v1/auth/token/anonymous",
-            json={"clientId": "appie-ios"},
-            headers=APP_HEADERS,
-        )
-        token.raise_for_status()
-        headers = APP_HEADERS | {"Authorization": f"Bearer {token.json()['access_token']}"}
+        headers = anonymous_headers(self.client)
         response = self.client.get(f"{API}/mobile-services/bonuspage/v3/metadata", headers=headers)
         response.raise_for_status()
         metadata = response.json()
