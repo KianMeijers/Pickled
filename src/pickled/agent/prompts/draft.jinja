@@ -1,0 +1,18 @@
+Draft the Meal Plan for the week from {{ week[0].strftime("%A") }} {{ week[0] }} to {{ week[-1].strftime("%A") }} {{ week[-1] }}.
+
+Work through the tools:
+1. Look at the Deals and the Seasonal Ingredients, and reuse saved Recipes where they fit.
+2. Give every day a Meal (a saved Recipe, or leftovers of an earlier day), or leave a day
+   deliberately empty with `clear_meal` when that suits the Household.
+3. Choose the store, comparing the shopping costs in the plan summary.
+4. Check the plan summary's Food Goals and warnings, and change Meals until they are met where
+   you can.
+5. Call `finish_draft` with a short summary in Dutch for the Household: what you planned and
+   why, with the costs as the plan summary gives them.
+
+You have a limited number of steps: make several tool calls at once where they don't depend on
+each other.
+{% if hint %}
+
+The Household asks for this week: {{ hint }}
+{% endif %}
