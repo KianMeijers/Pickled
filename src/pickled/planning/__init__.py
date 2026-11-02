@@ -8,6 +8,7 @@ from pickled.planning.checks import (
     WarningKind,
 )
 from pickled.planning.errors import PlanRefused
+from pickled.planning.locks import plan_lock
 from pickled.planning.models import (
     ItemSource,
     Meal,
@@ -24,12 +25,19 @@ from pickled.planning.plans import (
     clear_meal,
     finish_draft,
     meal_plan_for,
+    next_shopping_day,
     set_leftovers,
     set_meal,
     set_store,
     start_meal_plan,
 )
-from pickled.planning.recipes import Nutrition, RecipeLine, get_recipe, save_recipe
+from pickled.planning.recipes import (
+    Nutrition,
+    RecipeLine,
+    get_recipe,
+    save_recipe,
+    search_recipes,
+)
 from pickled.planning.shopping import tick_shopping_item
 from pickled.planning.summary import (
     DaySummary,
@@ -40,6 +48,7 @@ from pickled.planning.summary import (
     picked_prices,
     plan_summary,
 )
+from pickled.planning.text import describe_goal, euros
 
 __all__ = [
     "DINNER_SHARE",
@@ -66,12 +75,17 @@ __all__ = [
     "accept_meal_plan",
     "add_shopping_item",
     "clear_meal",
+    "describe_goal",
+    "euros",
     "finish_draft",
     "get_recipe",
     "meal_plan_for",
+    "next_shopping_day",
     "picked_prices",
+    "plan_lock",
     "plan_summary",
     "save_recipe",
+    "search_recipes",
     "set_leftovers",
     "set_meal",
     "set_store",

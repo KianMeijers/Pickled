@@ -45,3 +45,5 @@ testpaths = ["tests"]
 # Live tests call real services and spend money: run them with `pytest -m live`.
 addopts = ["-m", "not live"]
 markers = ["live: calls a real outside service; skipped unless run with `-m live`"]
+# Tests run the agent on fake models, which Anthropic prompt caching can't apply to.
+filterwarnings = ["ignore:AnthropicPromptCachingMiddleware caching middleware only supports"]

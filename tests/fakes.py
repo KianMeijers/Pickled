@@ -1,5 +1,7 @@
 """A fake chat model, so no test calls a real one."""
 
+from collections.abc import Callable
+from itertools import count
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -27,10 +29,35 @@ def tool_call(name: str, args: dict, **usage_counts) -> AIMessage:
     )
 
 
-class FakeChatModel(BaseChatModel):
-    """Answers each call with the next of `replies`, and keeps the messages it was sent."""
+_call_ids = count(1)
 
-    replies: list[AIMessage]
+
+def tool_calls(*calls: tuple[str, dict], **usage_counts) -> AIMessage:
+    """A reply that calls several tools at once, each `(name, args)`, with unique call ids."""
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {"name": name, "args": args, "id": f"call_{next(_call_ids)}"} for name, args in calls
+        ],
+        usage_metadata=usage(**usage_counts),
+    )
+
+
+def reply(text: str) -> AIMessage:
+    """A reply in words, calling no tool."""
+    return AIMessage(content=text, usage_metadata=usage())
+
+
+Reply = AIMessage | Callable[[list[BaseMessage]], AIMessage]
+
+
+class FakeChatModel(BaseChatModel):
+    """Answers each call with the next of `replies`, and keeps the messages it was sent.
+
+    A reply can be a function of the messages sent, to answer what a tool just returned.
+    """
+
+    replies: list[Any]  # Reply: pydantic would try to make a function into an AIMessage
     sent: list[list[BaseMessage]] = Field(default_factory=list)
 
     @property
@@ -41,7 +68,10 @@ class FakeChatModel(BaseChatModel):
         self.sent.append(list(messages))
         if not self.replies:
             raise AssertionError("FakeChatModel has no replies left")
-        return ChatResult(generations=[ChatGeneration(message=self.replies.pop(0))])
+        answer = self.replies.pop(0)
+        if not isinstance(answer, AIMessage):
+            answer = answer(list(messages))
+        return ChatResult(generations=[ChatGeneration(message=answer)])
 
     def bind_tools(self, tools, **kwargs: Any):
         return self

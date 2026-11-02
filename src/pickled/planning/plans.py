@@ -4,7 +4,7 @@ Each one checks the rules code enforces (spec §7), then returns the plan summar
 the Shopping List up to date with the Meals.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -34,6 +34,11 @@ def start_meal_plan(session: Session, week_start: date, *, now: datetime) -> Mea
     session.add(meal_plan)
     session.flush()
     return meal_plan
+
+
+def next_shopping_day(today: date) -> date:
+    """The first Shopping Day after `today`: the start of the next Meal Plan's week."""
+    return today + timedelta(days=(SATURDAY - today.weekday() - 1) % 7 + 1)
 
 
 def meal_plan_for(session: Session, week_start: date) -> MealPlan | None:
