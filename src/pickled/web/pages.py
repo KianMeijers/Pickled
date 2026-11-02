@@ -6,7 +6,13 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pickled.agent import conversation
-from pickled.planning import meal_plan_for, plan_summary, shopping_day_of, upcoming_shopping_day
+from pickled.planning import (
+    meal_plan_for,
+    plan_lock_if_free,
+    plan_summary,
+    shopping_day_of,
+    upcoming_shopping_day,
+)
 from pickled.taste import household
 from pickled.web.app import templates
 from pickled.web.drafting import drafting
@@ -48,9 +54,15 @@ async def plan_page(request: Request, week_start: date):
         meal_plan = meal_plan_for(session, week_start)
         if meal_plan is None:
             raise HTTPException(404, "Er is geen plan voor deze week.")
-        # The summary brings the stored Shopping List up to date; a page view keeps no writes.
-        summary = plan_summary(session, meal_plan, prices=services.shown_prices(session, meal_plan))
         meal_plan_id = meal_plan.id
+        # The summary brings the stored Shopping List up to date, which is kept unless a job or
+        # a chat turn is changing the plan. Then the list's new lines aren't stored, so none
+        # can be ticked until the page shows it again.
+        with plan_lock_if_free(services.sessions, meal_plan_id) as free:
+            prices = services.shown_prices(session, meal_plan)
+            summary = plan_summary(session, meal_plan, prices=prices)
+            if free:
+                session.commit()
         next_week_ready = week_start != next_week and meal_plan_for(session, next_week) is not None
     messages = await conversation(services.checkpointer, meal_plan_id)
     return templates.TemplateResponse(
@@ -62,6 +74,7 @@ async def plan_page(request: Request, week_start: date):
             "next_week": next_week if next_week_ready else None,
             "drafting": await drafting(services, week_start, meal_plan_id),
             "today": services.today(),
+            "unsaved": not free,
         },
     )
 

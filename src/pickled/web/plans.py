@@ -4,6 +4,7 @@ redrafting, drafting the next week, and the Shopping List."""
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
+from uuid import uuid4
 
 from fastapi import APIRouter, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
@@ -51,9 +52,9 @@ async def clear_day(request: Request, week_start: date, day: date):
             )
         except PlanRefused as refused:
             raise HTTPException(409, "Deze dag hoort niet bij dit plan.") from refused
-        meal_plan_id = meal_plan.id
-    note = f"{text.day_label(day).capitalize()} is leeg gelaten."
-    await add_note(chat_agent(services), meal_plan_id, note)
+        note = f"{text.day_label(day).capitalize()} is leeg gelaten."
+        # Under the plan's lock, so no chat turn or draft writes to the thread meanwhile.
+        await add_note(chat_agent(services), meal_plan.id, note)
     return templates.TemplateResponse(
         request, "_cleared.html", {"summary": summary, "note": note, "today": services.today()}
     )
@@ -111,7 +112,10 @@ async def redraft(request: Request, week_start: date, hint: str = Form("")):
             raise HTTPException(409, "Een geaccepteerd plan maak je niet opnieuw.")
     try:
         await draft_meal_plan.configure(queueing_lock=QUEUEING_LOCK).defer_async(
-            week=week_start.isoformat(), redraft=True, hint=hint.strip() or None
+            week=week_start.isoformat(),
+            redraft=True,
+            hint=hint.strip() or None,
+            request_id=uuid4().hex,
         )
     except AlreadyEnqueued as queued:
         raise HTTPException(409, "Pickled is al aan het plannen.") from queued
@@ -149,7 +153,7 @@ async def add_item(request: Request, week_start: date, name: str = Form()):
 @asynccontextmanager
 async def changing(services: Services, week_start: date) -> AsyncIterator[tuple[Session, MealPlan]]:
     """A transaction on the week's Meal Plan, holding its lock, committed if the block ends.
-    Refused while a draft job is at work on it."""
+    Refused while a draft job is at work on it; waits for a chat turn to finish."""
     with services.sessions() as session:
         meal_plan = meal_plan_for(session, week_start)
         if meal_plan is None:

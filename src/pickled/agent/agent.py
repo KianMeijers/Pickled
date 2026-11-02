@@ -62,22 +62,53 @@ def thread(meal_plan_id: int) -> RunnableConfig:
     return {"configurable": {"thread_id": f"meal-plan-{meal_plan_id}"}}
 
 
-def draft_request(week: list[date], hint: str | None = None) -> HumanMessage:
-    """The message that asks the agent to draft the Meal Plan for `week`."""
+def draft_request(
+    week: list[date], hint: str | None = None, *, key: str | None = None
+) -> HumanMessage:
+    """The message that asks the agent to draft the Meal Plan for `week`. A `key` gives it the
+    same id each time, so a retried job can find its own request on the thread."""
     text = templates.get_template("draft.jinja").render(week=week, hint=hint)
-    return HumanMessage(content=text, id=f"{DRAFT_REQUEST}-{uuid4()}")
+    return HumanMessage(content=text, id=f"{DRAFT_REQUEST}-{key or uuid4()}")
 
 
 async def add_note(agent, meal_plan_id: int, text: str) -> None:
     """Add a note to a Meal Plan's Conversation without a run: the agent reads it on its next
     turn, and the Household sees it as a note. `agent` is any agent `make_agent` made."""
+    config = thread(meal_plan_id)
+    state = await agent.aget_state(config)
+    note = HumanMessage(content=text, id=f"{NOTE}-{uuid4()}")
     # Added as if the model had just answered, so the thread ends here rather than waiting
     # for a run to carry on from the note.
     await agent.aupdate_state(
-        thread(meal_plan_id),
-        {"messages": [HumanMessage(content=text, id=f"{NOTE}-{uuid4()}")]},
+        config,
+        {"messages": [*unanswered_calls(state.values.get("messages", [])), note]},
         as_node=f"{CallLimit.__name__}.after_model",
     )
+
+
+def unanswered_calls(messages: list[BaseMessage]) -> list[ToolMessage]:
+    """An error result for each tool call a stopped run left without one, to add before any
+    new message: a model call refuses a history with a tool call that has no result."""
+    last_call = next(
+        (message for message in reversed(messages) if isinstance(message, AIMessage)), None
+    )
+    if last_call is None:
+        return []
+    answered = {
+        message.tool_call_id
+        for message in messages[messages.index(last_call) + 1 :]
+        if isinstance(message, ToolMessage)
+    }
+    return [
+        ToolMessage(
+            content="Not run: the run stopped before this call.",
+            tool_call_id=call["id"],
+            name=call["name"],
+            status="error",
+        )
+        for call in last_call.tool_calls
+        if call["id"] not in answered
+    ]
 
 
 def is_note(message: BaseMessage) -> bool:

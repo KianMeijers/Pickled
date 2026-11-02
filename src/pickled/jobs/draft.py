@@ -18,7 +18,14 @@ from procrastinate.exceptions import AlreadyEnqueued
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from pickled.agent import DRAFT_CALL_LIMIT, PlanContext, draft_request, make_agent, thread
+from pickled.agent import (
+    DRAFT_CALL_LIMIT,
+    PlanContext,
+    draft_request,
+    make_agent,
+    thread,
+    unanswered_calls,
+)
 from pickled.config import Settings
 from pickled.db import default_sessions
 from pickled.deals import deals_valid_on
@@ -32,6 +39,7 @@ from pickled.planning import (
     MealPlan,
     PlanStatus,
     Prices,
+    draft_lock,
     meal_plan_for,
     next_shopping_day,
     picked_prices,
@@ -72,20 +80,27 @@ async def draft_meal_plan_now(
     clock: Callable[[], datetime] = lambda: datetime.now(AMSTERDAM),
     redraft: bool = False,
     hint: str | None = None,
+    request_id: str | None = None,
 ) -> None:
     """Draft the Meal Plan for the week from `week_start` with `model`, through the agent.
 
     A `redraft` starts a draft again from no Meals, with the Household's `hint`; an accepted
     plan is never redrafted. Otherwise a week whose draft is finished is left alone. A run
     that failed part-way resumes where it stopped; one that hit the call limit stays a partial
-    draft.
+    draft. A redraft retried with the same `request_id` finds its request on the thread, and
+    then goes on as a draft does rather than starting again.
     """
     now = clock()
     meal_plan_id, week = _meal_plan(sessions, week_start, now)
     agent = make_agent(model, call_limit=DRAFT_CALL_LIMIT, checkpointer=checkpointer)
     config = thread(meal_plan_id)
     context = PlanContext(meal_plan_id, sessions, prices, picker, clock)
-    async with plan_lock(sessions, meal_plan_id):
+    async with draft_lock(sessions, meal_plan_id), plan_lock(sessions, meal_plan_id):
+        state = await agent.aget_state(config)
+        messages = state.values.get("messages", [])
+        request = draft_request(week, hint, key=request_id)
+        # A retry of a redraft that already started carries on from there.
+        redraft = redraft and not any(message.id == request.id for message in messages)
         # Looked at only with the lock held, as another run may have drafted it meanwhile.
         with sessions.begin() as session:
             meal_plan = session.get_one(MealPlan, meal_plan_id)
@@ -98,22 +113,20 @@ async def draft_meal_plan_now(
                 logger.info("draft_meal_plan %s: already drafted", week_start)
                 return
         with llm_context(job="draft_meal_plan", meal_plan=meal_plan_id):
-            state = await agent.aget_state(config)
             if redraft:
                 logger.info("draft_meal_plan %s: redrafting", week_start)
                 # The hint is the Household's, so the Conversation shows it.
                 asked = [HumanMessage(content=hint)] if hint else []
-                request = {"messages": [*asked, draft_request(week, hint)]}
-                await agent.ainvoke(request, config, context=context)
+                new = [*unanswered_calls(messages), *asked, request]
+                await agent.ainvoke({"messages": new}, config, context=context)
             elif state.next:
                 logger.info("draft_meal_plan %s: resuming", week_start)
                 await agent.ainvoke(None, config, context=context)
-            elif state.values.get("messages"):
+            elif messages:
                 logger.info("draft_meal_plan %s: left partial by an earlier run", week_start)
                 return
             else:
-                request = {"messages": [draft_request(week, hint)]}
-                await agent.ainvoke(request, config, context=context)
+                await agent.ainvoke({"messages": [request]}, config, context=context)
 
     with sessions() as session:
         drafted = session.get_one(MealPlan, meal_plan_id).drafted_at is not None
@@ -156,7 +169,11 @@ def _check_deals(session: Session, week_start: date, now: datetime) -> None:
 
 
 async def draft_with_the_app(
-    week_start: date, *, redraft: bool = False, hint: str | None = None
+    week_start: date,
+    *,
+    redraft: bool = False,
+    hint: str | None = None,
+    request_id: str | None = None,
 ) -> None:
     """Draft with the app's database, draft model, Product picks and checkpointer."""
     sessions = default_sessions()
@@ -172,6 +189,7 @@ async def draft_with_the_app(
                 picker=picker,
                 redraft=redraft,
                 hint=hint,
+                request_id=request_id,
             )
 
 
@@ -181,24 +199,20 @@ async def draft_meal_plan(
     timestamp: int | None = None,
     redraft: bool = False,
     hint: str | None = None,
+    request_id: str | None = None,
 ) -> None:
     """Draft the Meal Plan for the week from Shopping Day `week`. By default that is the next
     one after the time the job was scheduled (`timestamp`), or after now when run by hand.
-    `redraft` replaces a draft's Meals, with the Household's `hint` if it gave one.
+    `redraft` replaces a draft's Meals, with the Household's `hint` if it gave one; its
+    `request_id` lets a retry of the job carry on from the first attempt.
 
     While Deals are missing it queues a fresh job for later rather than retrying, so the
     waiting doesn't use up the retries a failed draft gets.
     """
-    if week is not None:
-        week_start = date.fromisoformat(week)
-    else:
-        scheduled = datetime.now(AMSTERDAM)
-        if timestamp is not None:
-            scheduled = datetime.fromtimestamp(timestamp, AMSTERDAM)
-        week_start = next_shopping_day(scheduled.date())
+    week_start = draft_week(week, timestamp)
     logger.info("draft_meal_plan %s: start", week_start)
     try:
-        await draft_with_the_app(week_start, redraft=redraft, hint=hint)
+        await draft_with_the_app(week_start, redraft=redraft, hint=hint, request_id=request_id)
     except MissingDeals as missing:
         logger.info("draft_meal_plan %s: %s", week_start, missing)
         try:
@@ -207,6 +221,16 @@ async def draft_meal_plan(
             ).defer_async(week=week_start.isoformat())
         except AlreadyEnqueued:
             logger.info("draft_meal_plan %s: a draft is already queued", week_start)
+
+
+def draft_week(week: str | None, timestamp: int | None) -> date:
+    """The Shopping Day a `draft_meal_plan` job with these arguments drafts the week of."""
+    if week is not None:
+        return date.fromisoformat(week)
+    scheduled = datetime.now(AMSTERDAM)
+    if timestamp is not None:
+        scheduled = datetime.fromtimestamp(timestamp, AMSTERDAM)
+    return next_shopping_day(scheduled.date())
 
 
 def run_draft_meal_plan() -> None:

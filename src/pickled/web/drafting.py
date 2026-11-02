@@ -4,25 +4,25 @@ import asyncio
 from datetime import date
 
 from pickled.jobs import app
-from pickled.jobs.draft import draft_meal_plan
-from pickled.jobs.start import start_planning
-from pickled.planning import plan_locked
+from pickled.jobs.draft import QUEUEING_LOCK, draft_week
+from pickled.planning import draft_running
 from pickled.web.services import Services
 
-DRAFT_JOBS = {draft_meal_plan.name, start_planning.name}
-WAITING = {"todo", "doing"}
+# Every draft job, the first run's `start_planning` too, is queued under this lock.
+WAITING = ("todo", "doing")
 
 
 async def drafting(services: Services, week_start: date, meal_plan_id: int | None) -> bool:
-    """A draft job holds the week's Meal Plan's lock, or one is queued for the week."""
+    """A draft job is drafting the week's Meal Plan, or one is queued or starting for the week.
+    A chat turn holding the plan's lock is not a draft."""
     if meal_plan_id is not None and await asyncio.to_thread(
-        plan_locked, services.sessions, meal_plan_id
+        draft_running, services.sessions, meal_plan_id
     ):
         return True
-    jobs = await app.job_manager.list_jobs_async()
-    return any(
-        job.task_name in DRAFT_JOBS
-        and job.status in WAITING
-        and job.task_kwargs.get("week") == week_start.isoformat()
-        for job in jobs
-    )
+    for status in WAITING:
+        jobs = await app.job_manager.list_jobs_async(queueing_lock=QUEUEING_LOCK, status=status)
+        for job in jobs:
+            week = draft_week(job.task_kwargs.get("week"), job.task_kwargs.get("timestamp"))
+            if week == week_start:
+                return True
+    return False

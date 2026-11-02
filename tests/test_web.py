@@ -8,13 +8,18 @@ from datetime import date, datetime
 import pytest
 from fakes import FakeChatModel, reply, tool_calls
 from fastapi.testclient import TestClient
+from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from planning_helpers import AMSTERDAM, NOW, SATURDAY, WEEK, FakePrices, ingredient, plan, recipe
+from sqlalchemy import delete
 
-from pickled.agent import conversation
+import pickled.web.chat as chat_module
+from pickled.agent import conversation, thread
 from pickled.ingredients import Aisle
+from pickled.jobs.draft import QUEUEING_LOCK, draft_meal_plan
 from pickled.llm import Role, make_chat_model
 from pickled.planning import (
+    ShoppingListItem,
     clear_meal,
     plan_summary,
     set_leftovers,
@@ -22,7 +27,7 @@ from pickled.planning import (
     set_store,
     start_meal_plan,
 )
-from pickled.planning.locks import LOCK, MEAL_PLAN_LOCKS, UNLOCK
+from pickled.planning.locks import DRAFT_LOCKS, LOCK, MEAL_PLAN_LOCKS, UNLOCK
 from pickled.stores import Store
 from pickled.taste import (
     Author,
@@ -33,6 +38,7 @@ from pickled.taste import (
     set_household,
 )
 from pickled.web import Services, create_app
+from pickled.web.chat import chat_agent
 
 
 class Web:
@@ -191,6 +197,34 @@ def test_a_finished_chat_stream_doesnt_run_the_turn_again(db_session, web):
     assert len(web.fake.sent) == 1
 
 
+def test_a_note_answers_the_tool_calls_a_stopped_run_left_open(db_session, web):
+    meal_plan = drafted_week(db_session, web.prices)
+    agent = chat_agent(web.services)
+    asyncio.run(
+        agent.aupdate_state(
+            thread(meal_plan.id),
+            {"messages": [HumanMessage("Hallo?"), tool_calls(("get_plan", {}))]},
+            as_node="model",
+        )
+    )
+
+    web.client.post(f"/plans/{SATURDAY}/days/{WEEK[2]}/clear")
+
+    messages = asyncio.run(agent.aget_state(thread(meal_plan.id))).values["messages"]
+    answered = {message.tool_call_id for message in messages if isinstance(message, ToolMessage)}
+    assert {call["id"] for call in messages[1].tool_calls} <= answered
+
+
+def test_a_turn_whose_stream_never_came_is_dropped(db_session, web, monkeypatch):
+    drafted_week(db_session, web.prices)
+    monkeypatch.setattr(chat_module, "TURN_EXPIRES", -1)
+
+    web.client.post(f"/plans/{SATURDAY}/chat", data={"message": "Hallo?"})
+    web.client.post(f"/plans/{SATURDAY}/chat", data={"message": "Nog een keer?"})
+
+    assert [turn.message for turn in web.client.app.state.turns.values()] == ["Nog een keer?"]
+
+
 def test_skipping_a_day_clears_it_without_the_model_and_notes_it(db_session, web):
     meal_plan = drafted_week(db_session, web.prices)
 
@@ -277,9 +311,10 @@ def test_redrafting_a_draft_queues_the_draft_job_with_the_hint(db_session, web, 
     redrafted = web.client.post(f"/plans/{SATURDAY}/redraft", data={"hint": "Meer vis"})
 
     assert redrafted.status_code == 200
-    assert queued(job_queue) == [
-        ("draft_meal_plan", {"week": str(SATURDAY), "redraft": True, "hint": "Meer vis"})
-    ]
+    [(task, args)] = queued(job_queue)
+    assert task == "draft_meal_plan"
+    assert args.pop("request_id")
+    assert args == {"week": str(SATURDAY), "redraft": True, "hint": "Meer vis"}
 
 
 def test_an_accepted_plan_cant_be_redrafted(db_session, web, job_queue):
@@ -293,15 +328,26 @@ def test_an_accepted_plan_cant_be_redrafted(db_session, web, job_queue):
 
 
 @contextmanager
-def held_by_a_draft_job(test_engine, meal_plan_id):
-    """The Meal Plan's lock, held as a running draft job holds it, on a connection of its own."""
-    keys = {"space": MEAL_PLAN_LOCKS, "id": meal_plan_id}
-    with test_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as job:
-        job.execute(LOCK, keys)
+def held(test_engine, meal_plan_id, *spaces):
+    """The Meal Plan's locks in `spaces`, held on a connection of its own."""
+    with test_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as holder:
+        for space in spaces:
+            holder.execute(LOCK, {"space": space, "id": meal_plan_id})
         try:
             yield
         finally:
-            job.execute(UNLOCK, keys)
+            for space in spaces:
+                holder.execute(UNLOCK, {"space": space, "id": meal_plan_id})
+
+
+def held_by_a_draft_job(test_engine, meal_plan_id):
+    """The locks a running draft job holds."""
+    return held(test_engine, meal_plan_id, DRAFT_LOCKS, MEAL_PLAN_LOCKS)
+
+
+def held_by_a_chat_turn(test_engine, meal_plan_id):
+    """The lock a chat turn holds while the agent replies."""
+    return held(test_engine, meal_plan_id, MEAL_PLAN_LOCKS)
 
 
 def test_chat_is_disabled_while_a_draft_job_holds_the_plan(db_session, web, test_engine):
@@ -317,6 +363,28 @@ def test_chat_is_disabled_while_a_draft_job_holds_the_plan(db_session, web, test
     assert posted.status_code == 409
     assert cleared.status_code == 409
     assert web.fake.sent == []
+
+
+def test_a_chat_turn_at_work_isnt_shown_as_a_draft(db_session, web, test_engine):
+    meal_plan = drafted_week(db_session, web.prices)
+
+    with held_by_a_chat_turn(test_engine, meal_plan.id):
+        page = web.client.get(f"/plans/{SATURDAY}")
+
+    assert "Pickled is aan het plannen" not in page.text
+    assert not re.search(r"<textarea[^>]*disabled", page.text)
+    # The turn may be changing the Shopping List, so the page's copy can't be ticked.
+    assert re.search(r'<input type="checkbox"[^>]*disabled', page.text)
+
+
+def test_a_queued_thursday_draft_shows_as_drafting(db_session, web):
+    set_household(db_session, people=2)
+    draft_meal_plan.configure(queueing_lock=QUEUEING_LOCK).defer(timestamp=int(NOW.timestamp()))
+
+    page = web.client.get("/")
+
+    assert "Pickled is aan het plannen" in page.text
+    assert "Plan maken" not in page.text
 
 
 def test_chat_is_disabled_while_a_redraft_is_queued(db_session, web):
@@ -374,6 +442,18 @@ def test_onboarding_sets_the_household_and_starts_planning(db_session, web, job_
     assert "Pickled is aan het plannen" in web.client.get("/").text
 
 
+def test_onboarding_sent_again_changes_nothing(db_session, web, job_queue):
+    form = {"people": "2", "taste_notes": "Geen spruitjes"}
+
+    web.client.post("/welkom", data=form, follow_redirects=False)
+    again = web.client.post("/welkom", data={**form, "people": "4"}, follow_redirects=False)
+
+    assert again.status_code == 303
+    assert household(db_session).people == 2
+    assert [note.text for note in active_taste_notes(db_session)] == ["Geen spruitjes"]
+    assert queued(job_queue) == [("start_planning", {"week": str(SATURDAY)})]
+
+
 def test_without_a_plan_home_offers_to_draft_next_week(db_session, web, job_queue):
     set_household(db_session, people=2)
 
@@ -411,6 +491,19 @@ def test_ticking_a_shopping_list_item_keeps_it_ticked(db_session, web):
     assert shopping_line(db_session, web, meal_plan, "kipfilet").checked
     web.client.post(f"/plans/{SATURDAY}/shopping/{kipfilet.id}", data={})
     assert not shopping_line(db_session, web, meal_plan, "kipfilet").checked
+
+
+def test_a_line_the_page_brings_onto_the_shopping_list_can_be_ticked(db_session, web):
+    meal_plan = drafted_week(db_session, web.prices)
+    # A stored list out of date with the Meals.
+    db_session.execute(delete(ShoppingListItem).where(ShoppingListItem.name == "kipfilet"))
+
+    page = web.client.get(f"/plans/{SATURDAY}")
+    item_id = re.search(r'shopping/(\d+)"[^>]*>\s*<span>kipfilet', page.text)[1]
+    ticked = web.client.post(f"/plans/{SATURDAY}/shopping/{item_id}", data={"checked": "on"})
+
+    assert ticked.status_code == 200
+    assert shopping_line(db_session, web, meal_plan, "kipfilet").checked
 
 
 def test_the_household_adds_its_own_item_to_the_shopping_list(db_session, web):

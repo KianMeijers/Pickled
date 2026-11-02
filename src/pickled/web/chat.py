@@ -2,13 +2,14 @@
 
 A turn is posted first and streamed after, because the browser's EventSource can only GET. The
 posted turn waits in memory until its stream starts, so a reconnecting EventSource can't run
-it twice.
+it twice. Being in memory, it needs the app to run as one process, as the Dockerfile runs it.
 """
 
 import html
 import logging
+import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from uuid import uuid4
 
@@ -17,7 +18,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 
-from pickled.agent import CHAT_CALL_LIMIT, PlanContext, make_agent, thread
+from pickled.agent import CHAT_CALL_LIMIT, PlanContext, make_agent, thread, unanswered_calls
 from pickled.llm import llm_context
 from pickled.planning import meal_plan_for, plan_lock, plan_summary
 from pickled.web.app import templates
@@ -51,6 +52,8 @@ STATUS = {
 }
 DRAFTING = "Pickled is aan het plannen… Even geduld."
 FAILED = "Er ging iets mis. Probeer het nog eens."
+# How long a posted turn waits for its stream; one whose stream never came is then dropped.
+TURN_EXPIRES = 300
 # Tools that change nothing the plan panel shows.
 READ_ONLY = {"get_plan", "search_deals", "search_recipes", "get_recipe", "save_recipe"}
 
@@ -59,6 +62,7 @@ READ_ONLY = {"get_plan", "search_deals", "search_recipes", "get_recipe", "save_r
 class Turn:
     week_start: date
     message: str
+    posted: float = field(default_factory=time.monotonic)
 
 
 def turns_of(request: Request) -> dict[str, Turn]:
@@ -97,8 +101,11 @@ async def start_turn(request: Request, week_start: date, message: str) -> HTMLRe
         meal_plan_id = meal_plan.id
     if await drafting(services, week_start, meal_plan_id):
         raise HTTPException(409, DRAFTING)
+    turns = turns_of(request)
+    for expired in [key for key, turn in turns.items() if _expired(turn)]:
+        del turns[expired]
     turn_id = uuid4().hex
-    turns_of(request)[turn_id] = Turn(week_start, message)
+    turns[turn_id] = Turn(week_start, message)
     return templates.TemplateResponse(
         request,
         "_turn.html",
@@ -111,7 +118,8 @@ async def stream_turn(
     request: Request, week_start: date, turn_id: str
 ) -> AsyncIterator[ServerSentEvent]:
     turn = turns_of(request).pop(turn_id, None)
-    if turn is not None and turn.week_start == week_start:
+    # A reconnecting EventSource finds its turn gone, and is only told it is done.
+    if turn is not None and turn.week_start == week_start and not _expired(turn):
         try:
             async for event in run_turn(services_of(request), turn):
                 yield event
@@ -132,12 +140,15 @@ async def run_turn(services: Services, turn: Turn) -> AsyncIterator[ServerSentEv
     context = PlanContext(
         meal_plan_id, services.sessions, services.prices, services.picker, services.clock
     )
-    request = {"messages": [HumanMessage(content=turn.message)]}
+    config = thread(meal_plan_id)
     async with plan_lock(services.sessions, meal_plan_id):
+        state = await agent.aget_state(config)
+        stopped = unanswered_calls(state.values.get("messages", []))
+        request = {"messages": [*stopped, HumanMessage(content=turn.message)]}
         with llm_context(meal_plan=meal_plan_id):
             async for mode, chunk in agent.astream(
                 request,
-                thread(meal_plan_id),
+                config,
                 context=context,
                 stream_mode=["messages", "updates"],
             ):
@@ -169,14 +180,19 @@ def chat_agent(services: Services):
 
 
 def plan_panel(services: Services, turn: Turn) -> str:
-    """The plan panel and the Shopping List as out-of-band swaps, replacing those on the page."""
-    with services.sessions() as session:
+    """The plan panel and the Shopping List as out-of-band swaps, replacing those on the page.
+    The turn holds the plan's lock, so the Shopping List brought up to date is kept."""
+    with services.sessions.begin() as session:
         meal_plan = meal_plan_for(session, turn.week_start)
         summary = plan_summary(session, meal_plan, prices=services.shown_prices(session, meal_plan))
     shown = {"summary": summary, "today": services.today(), "oob": True}
     return "".join(
         templates.get_template(name).render(shown) for name in ("_plan.html", "_shopping.html")
     )
+
+
+def _expired(turn: Turn) -> bool:
+    return time.monotonic() - turn.posted > TURN_EXPIRES
 
 
 def _reply_token(message, metadata: dict) -> bool:

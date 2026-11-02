@@ -1,10 +1,12 @@
 """First run: the Household's size, optional Food Goals and a few Taste notes, then planning."""
 
+import logging
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from procrastinate.exceptions import AlreadyEnqueued
+from sqlalchemy import text
 
 from pickled.jobs.draft import QUEUEING_LOCK
 from pickled.jobs.start import start_planning
@@ -21,7 +23,12 @@ from pickled.taste import (
 from pickled.web.app import templates
 from pickled.web.services import services_of
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+# Onboardings one at a time, so a double submit can't onboard twice.
+ONE_AT_A_TIME = text("LOCK TABLE household IN EXCLUSIVE MODE")
 
 
 @router.get("/welkom", response_class=HTMLResponse)
@@ -42,7 +49,7 @@ async def onboard(
     taste_notes: str = Form(""),
 ):
     """Save the Household, then fetch both stores' Deals and draft the next week. A Food Goal
-    left blank isn't set."""
+    left blank isn't set. Once onboarded, a form sent again changes nothing."""
     services = services_of(request)
     now = services.clock()
     try:
@@ -50,6 +57,9 @@ async def onboard(
             _number(field) for field in (budget_euros, vegetarian_days, protein_g)
         )
         with services.sessions.begin() as session:
+            session.execute(ONE_AT_A_TIME)
+            if household(session) is not None:
+                return RedirectResponse("/", status_code=303)
             set_household(session, people=people)
             if budget:
                 kind = FoodGoalKind.BUDGET_CENTS_PER_WEEK
@@ -72,7 +82,8 @@ async def onboard(
             week=week_start.isoformat()
         )
     except AlreadyEnqueued:
-        pass
+        # Home shows the queued draft; it waits for the Deals as a scheduled draft does.
+        logger.info("Onboarded with a draft already queued; not starting planning")
     return RedirectResponse("/", status_code=303)
 
 

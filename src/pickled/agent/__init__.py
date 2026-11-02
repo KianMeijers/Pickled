@@ -9,6 +9,7 @@ from pickled.agent.agent import (
     is_note,
     make_agent,
     thread,
+    unanswered_calls,
 )
 from pickled.agent.context import PlanContext
 from pickled.agent.prompt import system_prompt
@@ -24,4 +25,5 @@ __all__ = [
     "make_agent",
     "system_prompt",
     "thread",
+    "unanswered_calls",
 ]

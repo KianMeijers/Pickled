@@ -11,7 +11,7 @@
     {% for line in lines %}
     <li>
       <label>
-        <input type="checkbox" name="checked" {{ 'checked' if line.checked }}
+        <input type="checkbox" name="checked" {{ 'checked' if line.checked }} {{ 'disabled' if unsaved }}
                hx-post="/plans/{{ week }}/shopping/{{ line.id }}" hx-trigger="change" hx-swap="none">
         <span>{{ line.name }} <span class="muted">{{ line.quantity | amount(line.unit) }}</span>
           {% if line.deal %}<span class="deal">· {{ line.deal }}</span>{% endif %}</span>

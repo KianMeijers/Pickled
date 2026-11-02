@@ -7,7 +7,7 @@ from datetime import datetime
 
 import pytest
 from fakes import FakeChatModel, reply, tool_calls
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from planning_helpers import (
     AMSTERDAM,
@@ -24,7 +24,7 @@ from planning_helpers import (
 from sqlalchemy import select
 
 import pickled.jobs.draft
-from pickled.agent import DRAFT_CALL_LIMIT, conversation
+from pickled.agent import DRAFT_CALL_LIMIT, conversation, make_agent, thread
 from pickled.ingredients import Aisle
 from pickled.jobs.draft import MissingDeals, draft_meal_plan_now
 from pickled.llm import LlmCall, Role, make_chat_model
@@ -364,3 +364,48 @@ def test_an_accepted_plan_is_not_redrafted(db_session, sessions):
     assert fake.sent == []
     db_session.expire_all()
     assert plan_summary(db_session, meal_plan, prices=prices).days[0].kind == "recipe"
+
+
+def test_a_retried_redraft_carries_on_from_the_first_attempt(db_session, sessions):
+    prices = with_deals_at_both_stores(db_session)
+    meal_plan = finished_draft(db_session, prices)
+    checkpointer = InMemorySaver()
+    redraft = {"redraft": True, "hint": "Meer vis", "request_id": "job-1"}
+    failing = FakeChatModel(replies=[tool_calls(("get_plan", {}))])  # then has no replies left
+
+    with pytest.raises(AssertionError):
+        draft(sessions, failing, prices, checkpointer=checkpointer, **redraft)
+    retried = FakeChatModel(replies=[reply("Verder.")])
+    draft(sessions, retried, prices, checkpointer=checkpointer, **redraft)
+
+    [sent] = retried.sent
+    assert isinstance(sent[-1], ToolMessage) and sent[-1].name == "get_plan"
+    messages = asyncio.run(conversation(checkpointer, meal_plan.id))
+    assert [message.content for message in messages].count("Meer vis") == 1
+
+
+def test_a_redraft_answers_the_tool_calls_a_stopped_run_left_open(db_session, sessions):
+    prices = with_deals_at_both_stores(db_session)
+    meal_plan = finished_draft(db_session, prices)
+    checkpointer = InMemorySaver()
+    stopped = make_agent(FakeChatModel(replies=[]), call_limit=1, checkpointer=checkpointer)
+    asyncio.run(
+        stopped.aupdate_state(
+            thread(meal_plan.id),
+            {"messages": [HumanMessage("Hallo?"), tool_calls(("get_plan", {}))]},
+            as_node="model",
+        )
+    )
+    fake = FakeChatModel(replies=[reply("Opnieuw begonnen.")])
+
+    draft(sessions, fake, prices, checkpointer=checkpointer, redraft=True)
+
+    [sent] = fake.sent
+    calls = {
+        call["id"]
+        for message in sent
+        if isinstance(message, AIMessage)
+        for call in message.tool_calls
+    }
+    answered = {message.tool_call_id for message in sent if isinstance(message, ToolMessage)}
+    assert calls and calls <= answered

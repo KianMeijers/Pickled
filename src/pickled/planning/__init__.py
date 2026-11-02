@@ -8,7 +8,7 @@ from pickled.planning.checks import (
     WarningKind,
 )
 from pickled.planning.errors import PlanRefused
-from pickled.planning.locks import plan_lock, plan_locked
+from pickled.planning.locks import draft_lock, draft_running, plan_lock, plan_lock_if_free
 from pickled.planning.models import (
     ItemSource,
     Meal,
@@ -79,6 +79,8 @@ __all__ = [
     "add_shopping_item",
     "clear_meal",
     "describe_goal",
+    "draft_lock",
+    "draft_running",
     "euros",
     "finish_draft",
     "get_recipe",
@@ -86,7 +88,7 @@ __all__ = [
     "next_shopping_day",
     "picked_prices",
     "plan_lock",
-    "plan_locked",
+    "plan_lock_if_free",
     "plan_summary",
     "restart_draft",
     "save_recipe",
