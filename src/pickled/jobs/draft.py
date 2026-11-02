@@ -11,6 +11,7 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.types import Checkpointer
 from procrastinate.exceptions import AlreadyEnqueued
@@ -35,6 +36,7 @@ from pickled.planning import (
     next_shopping_day,
     picked_prices,
     plan_lock,
+    restart_draft,
     start_meal_plan,
 )
 from pickled.stores import AMSTERDAM, Store
@@ -68,12 +70,15 @@ async def draft_meal_plan_now(
     prices: Callable[[Session, MealPlan], Prices],
     picker: ProductPicker | None = None,
     clock: Callable[[], datetime] = lambda: datetime.now(AMSTERDAM),
+    redraft: bool = False,
     hint: str | None = None,
 ) -> None:
     """Draft the Meal Plan for the week from `week_start` with `model`, through the agent.
 
-    A week whose draft is finished is left alone. A run that failed part-way resumes where it
-    stopped; one that hit the call limit stays a partial draft.
+    A `redraft` starts a draft again from no Meals, with the Household's `hint`; an accepted
+    plan is never redrafted. Otherwise a week whose draft is finished is left alone. A run
+    that failed part-way resumes where it stopped; one that hit the call limit stays a partial
+    draft.
     """
     now = clock()
     meal_plan_id, week = _meal_plan(sessions, week_start, now)
@@ -82,14 +87,25 @@ async def draft_meal_plan_now(
     context = PlanContext(meal_plan_id, sessions, prices, picker, clock)
     async with plan_lock(sessions, meal_plan_id):
         # Looked at only with the lock held, as another run may have drafted it meanwhile.
-        with sessions() as session:
+        with sessions.begin() as session:
             meal_plan = session.get_one(MealPlan, meal_plan_id)
-            if meal_plan.drafted_at is not None or meal_plan.status != PlanStatus.DRAFT:
+            if meal_plan.status != PlanStatus.DRAFT:
+                logger.info("draft_meal_plan %s: already accepted", week_start)
+                return
+            if redraft:
+                restart_draft(session, meal_plan)
+            elif meal_plan.drafted_at is not None:
                 logger.info("draft_meal_plan %s: already drafted", week_start)
                 return
         with llm_context(job="draft_meal_plan", meal_plan=meal_plan_id):
             state = await agent.aget_state(config)
-            if state.next:
+            if redraft:
+                logger.info("draft_meal_plan %s: redrafting", week_start)
+                # The hint is the Household's, so the Conversation shows it.
+                asked = [HumanMessage(content=hint)] if hint else []
+                request = {"messages": [*asked, draft_request(week, hint)]}
+                await agent.ainvoke(request, config, context=context)
+            elif state.next:
                 logger.info("draft_meal_plan %s: resuming", week_start)
                 await agent.ainvoke(None, config, context=context)
             elif state.values.get("messages"):
@@ -139,7 +155,9 @@ def _check_deals(session: Session, week_start: date, now: datetime) -> None:
         raise MissingDeals(missing, retry_at=min(now + DEALS_RETRY, deadline))
 
 
-async def draft_with_the_app(week_start: date) -> None:
+async def draft_with_the_app(
+    week_start: date, *, redraft: bool = False, hint: str | None = None
+) -> None:
     """Draft with the app's database, draft model, Product picks and checkpointer."""
     sessions = default_sessions()
     conninfo = schema_conninfo(Settings().database_url, LANGGRAPH_SCHEMA)
@@ -152,13 +170,21 @@ async def draft_with_the_app(week_start: date) -> None:
                 checkpointer=checkpointer,
                 prices=lambda session, meal_plan: picked_prices(session, meal_plan, picker),
                 picker=picker,
+                redraft=redraft,
+                hint=hint,
             )
 
 
 @app.task(name="draft_meal_plan", retry=LlmJobRetry(max_attempts=2, wait=600))
-async def draft_meal_plan(week: str | None = None, timestamp: int | None = None) -> None:
+async def draft_meal_plan(
+    week: str | None = None,
+    timestamp: int | None = None,
+    redraft: bool = False,
+    hint: str | None = None,
+) -> None:
     """Draft the Meal Plan for the week from Shopping Day `week`. By default that is the next
     one after the time the job was scheduled (`timestamp`), or after now when run by hand.
+    `redraft` replaces a draft's Meals, with the Household's `hint` if it gave one.
 
     While Deals are missing it queues a fresh job for later rather than retrying, so the
     waiting doesn't use up the retries a failed draft gets.
@@ -172,7 +198,7 @@ async def draft_meal_plan(week: str | None = None, timestamp: int | None = None)
         week_start = next_shopping_day(scheduled.date())
     logger.info("draft_meal_plan %s: start", week_start)
     try:
-        await draft_with_the_app(week_start)
+        await draft_with_the_app(week_start, redraft=redraft, hint=hint)
     except MissingDeals as missing:
         logger.info("draft_meal_plan %s: %s", week_start, missing)
         try:

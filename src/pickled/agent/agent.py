@@ -36,6 +36,8 @@ CHAT_CALL_LIMIT = 15
 DRAFT_REQUEST = "draft-request"
 # Where a run hit its call limit: kept on the thread for the agent, hidden from the Household.
 CALL_LIMIT = "call-limit"
+# A note of a change the Household made outside the chat, such as leaving a day empty.
+NOTE = "note"
 
 
 def make_agent(model: BaseChatModel, *, call_limit: int, checkpointer: Checkpointer):
@@ -64,6 +66,22 @@ def draft_request(week: list[date], hint: str | None = None) -> HumanMessage:
     """The message that asks the agent to draft the Meal Plan for `week`."""
     text = templates.get_template("draft.jinja").render(week=week, hint=hint)
     return HumanMessage(content=text, id=f"{DRAFT_REQUEST}-{uuid4()}")
+
+
+async def add_note(agent, meal_plan_id: int, text: str) -> None:
+    """Add a note to a Meal Plan's Conversation without a run: the agent reads it on its next
+    turn, and the Household sees it as a note. `agent` is any agent `make_agent` made."""
+    # Added as if the model had just answered, so the thread ends here rather than waiting
+    # for a run to carry on from the note.
+    await agent.aupdate_state(
+        thread(meal_plan_id),
+        {"messages": [HumanMessage(content=text, id=f"{NOTE}-{uuid4()}")]},
+        as_node=f"{CallLimit.__name__}.after_model",
+    )
+
+
+def is_note(message: BaseMessage) -> bool:
+    return (message.id or "").startswith(NOTE)
 
 
 async def conversation(checkpointer: Checkpointer, meal_plan_id: int) -> list[BaseMessage]:

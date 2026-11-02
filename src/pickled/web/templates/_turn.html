@@ -1,0 +1,7 @@
+<div class="message household">{{ message }}</div>
+<div class="message agent" sse-connect="{{ stream_url }}" sse-close="done">
+  <span sse-swap="token" hx-swap="beforeend"></span>
+  <div class="status" sse-swap="status">Even denken…</div>
+  <p class="error" sse-swap="error" hidden hx-on::after-swap="this.hidden = false"></p>
+  <div sse-swap="plan" hx-swap="none" hidden></div>
+</div>

@@ -3,8 +3,10 @@
 from pickled.agent.agent import (
     CHAT_CALL_LIMIT,
     DRAFT_CALL_LIMIT,
+    add_note,
     conversation,
     draft_request,
+    is_note,
     make_agent,
     thread,
 )
@@ -15,8 +17,10 @@ __all__ = [
     "CHAT_CALL_LIMIT",
     "DRAFT_CALL_LIMIT",
     "PlanContext",
+    "add_note",
     "conversation",
     "draft_request",
+    "is_note",
     "make_agent",
     "system_prompt",
     "thread",

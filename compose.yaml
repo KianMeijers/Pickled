@@ -16,5 +16,29 @@ services:
       timeout: 5s
       retries: 15
 
+  # The app and the worker from the Dockerfile: `docker compose --profile app up --build`.
+  app:
+    profiles: [app]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://pickled:pickled@db:5432/pickled
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    profiles: [app]
+    build: .
+    command: ["pickled", "worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://pickled:pickled@db:5432/pickled
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:

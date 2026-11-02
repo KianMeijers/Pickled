@@ -41,6 +41,16 @@ def next_shopping_day(today: date) -> date:
     return today + timedelta(days=(SATURDAY - today.weekday() - 1) % 7 + 1)
 
 
+def upcoming_shopping_day(today: date) -> date:
+    """The Shopping Day to plan for next: today, if it is one."""
+    return today if today.weekday() == SATURDAY else next_shopping_day(today)
+
+
+def shopping_day_of(day: date) -> date:
+    """The Shopping Day that starts the week `day` falls in."""
+    return day - timedelta(days=(day.weekday() - SATURDAY) % 7)
+
+
 def meal_plan_for(session: Session, week_start: date) -> MealPlan | None:
     return session.scalars(select(MealPlan).where(MealPlan.week_start == week_start)).first()
 
@@ -140,6 +150,19 @@ def finish_draft(
     _check_complete(session, meal_plan)
     meal_plan.drafted_at = now
     return plan_summary(session, meal_plan, prices=prices)
+
+
+def restart_draft(session: Session, meal_plan: MealPlan) -> None:
+    """Start a draft again from no Meals, to be redrafted. Manual Shopping List items stay."""
+    if meal_plan.status != PlanStatus.DRAFT:
+        raise PlanRefused("An accepted Meal Plan is never redrafted.")
+    meals = _meals(session, meal_plan)
+    # Leftovers first: they point at the Meal they are leftovers of.
+    for meal in sorted(meals, key=lambda meal: meal.leftovers_of_id is None):
+        session.delete(meal)
+        session.flush()
+    meal_plan.drafted_at = None
+    session.flush()
 
 
 def accept_meal_plan(

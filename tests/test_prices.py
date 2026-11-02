@@ -325,3 +325,14 @@ def test_the_app_picker_uses_the_match_model_as_pick_product(db_session, session
     assert price.cents == 386
     [call] = db_session.scalars(select(LlmCall))
     assert call.role is Role.PICK_PRODUCT
+
+
+def test_without_a_picker_a_price_is_read_but_never_picked_or_looked_up(db_session, kipfilet):
+    old = NOW - timedelta(weeks=5)
+    chosen(db_session, kipfilet, Store.JUMBO, "j1", (386, PriceSource.CHECKJEBON, old))
+
+    price = price_for(db_session, kipfilet, Store.AH, on=SATURDAY, picker=None)
+
+    # AH has no Product, and isn't asked for one: Jumbo's price stands in, as it would.
+    assert (price.product.store, price.cents, price.rough) == (Store.JUMBO, 386, True)
+    assert db_session.scalars(select(Product).where(Product.store == Store.AH)).all() == []

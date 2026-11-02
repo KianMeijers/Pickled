@@ -28,12 +28,21 @@ from pickled.agent import DRAFT_CALL_LIMIT, conversation
 from pickled.ingredients import Aisle
 from pickled.jobs.draft import MissingDeals, draft_meal_plan_now
 from pickled.llm import LlmCall, Role, make_chat_model
-from pickled.planning import MealPlan, clear_meal, finish_draft, meal_plan_for, plan_summary
+from pickled.planning import (
+    MealPlan,
+    accept_meal_plan,
+    add_shopping_item,
+    clear_meal,
+    finish_draft,
+    meal_plan_for,
+    plan_summary,
+    set_meal,
+)
 from pickled.stores import Store
 from pickled.taste import Author, add_taste_note, set_household
 
 
-def draft(sessions, fake, prices, *, now=NOW, checkpointer=None):
+def draft(sessions, fake, prices, *, now=NOW, checkpointer=None, **options):
     """Run the draft job for the week of SATURDAY with `fake` as the draft model."""
     model = make_chat_model(Role.DRAFT, sessions=sessions, build=lambda name, settings: fake)
     checkpointer = checkpointer or InMemorySaver()
@@ -45,6 +54,7 @@ def draft(sessions, fake, prices, *, now=NOW, checkpointer=None):
             checkpointer=checkpointer,
             prices=lambda session, meal_plan: prices,
             clock=lambda: now,
+            **options,
         )
     )
     return checkpointer
@@ -301,3 +311,56 @@ def test_a_draft_that_failed_part_way_resumes_where_it_stopped(db_session, sessi
 
     [sent] = resumed.sent
     assert isinstance(sent[-1], ToolMessage) and sent[-1].name == "get_plan"
+
+
+def finished_draft(session, prices):
+    """A finished draft of the week of SATURDAY: kip on Saturday, the other days empty, and an
+    item of the Household's own on the Shopping List."""
+    meal_plan = plan(session)
+    kip = recipe(session, "Kip met rijst", ("kipfilet", 300, "g"))
+    set_meal(session, meal_plan, WEEK[0], kip, 2, today=TODAY, prices=prices)
+    for day in WEEK[1:]:
+        clear_meal(session, meal_plan, day, today=TODAY, prices=prices)
+    add_shopping_item(session, meal_plan, "wc-papier", prices=prices)
+    finish_draft(session, meal_plan, now=NOW, prices=prices)
+    return meal_plan
+
+
+def test_a_redraft_replaces_every_meal_with_the_households_hint(db_session, sessions):
+    prices = with_deals_at_both_stores(db_session)
+    meal_plan = finished_draft(db_session, prices)
+    fake = FakeChatModel(
+        replies=[
+            tool_calls(("get_plan", {})),
+            tool_calls(*(("clear_meal", {"date": str(day)}) for day in WEEK)),
+            tool_calls(("finish_draft", {"summary": "Deze week eten we buiten de deur."})),
+        ]
+    )
+
+    checkpointer = draft(sessions, fake, prices, redraft=True, hint="Meer vis")
+
+    assert "Meer vis" in fake.sent[0][-1].content
+    assert last_tool_result(fake, 1).content.count("not filled") == 7
+    db_session.expire_all()
+    summary = plan_summary(db_session, meal_plan, prices=prices)
+    assert summary.drafted
+    assert [day.kind for day in summary.days] == ["empty"] * 7
+    assert [line.name for line in summary.shopping_list] == ["wc-papier"]
+    messages = asyncio.run(conversation(checkpointer, meal_plan.id))
+    assert [message.content for message in messages] == [
+        "Meer vis",
+        "Deze week eten we buiten de deur.",
+    ]
+
+
+def test_an_accepted_plan_is_not_redrafted(db_session, sessions):
+    prices = with_deals_at_both_stores(db_session)
+    meal_plan = finished_draft(db_session, prices)
+    accept_meal_plan(db_session, meal_plan, now=NOW, prices=prices)
+    fake = FakeChatModel(replies=[])
+
+    draft(sessions, fake, prices, redraft=True)
+
+    assert fake.sent == []
+    db_session.expire_all()
+    assert plan_summary(db_session, meal_plan, prices=prices).days[0].kind == "recipe"

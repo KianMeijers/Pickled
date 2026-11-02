@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Pickled{% endblock %}</title>
+  <script src="{{ url_for('static', path='htmx.min.js') }}"></script>
+  <script src="{{ url_for('static', path='htmx-sse.js') }}"></script>
+  <script>
+    // A refused request's Dutch reason shows in #errors, briefly.
+    htmx.config.responseHandling = [
+      {code: "204", swap: false},
+      {code: "286", swap: false},
+      {code: "[23]..", swap: true},
+      {code: "[45]..", swap: true, error: true, target: "#errors"},
+    ];
+    document.addEventListener("htmx:afterSwap", (event) => {
+      if (event.detail.target.id === "errors") {
+        setTimeout(() => { event.detail.target.innerHTML = ""; }, 5000);
+      }
+    });
+  </script>
+  <style>
+    :root {
+      --bg: #f6f4ef; --card: #fff; --ink: #1f2a1f; --muted: #6b726b; --line: #e3dfd5;
+      --accent: #3f7d3a; --accent-ink: #fff; --warn: #9a5b00; --warn-bg: #fff4dc;
+      --me: #e5f0e1; --note: #efece4;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161a16; --card: #20261f; --ink: #e8ece6; --muted: #9aa39a; --line: #333b32;
+        --accent: #7fbf72; --accent-ink: #10200d; --warn: #f0c070; --warn-bg: #3a2e14;
+        --me: #2b3b28; --note: #2a2d27;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { max-width: 40rem; margin: 0 auto; padding: 1rem 1rem 6rem; }
+    h1 { font-size: 1.4rem; margin: .25rem 0 .75rem; }
+    h2 { font-size: 1.1rem; margin: 1.25rem 0 .5rem; }
+    a { color: var(--accent); }
+    .muted { color: var(--muted); font-size: .9rem; }
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: .75rem;
+      padding: .75rem .9rem; margin: .5rem 0;
+    }
+    .banner {
+      background: var(--accent); color: var(--accent-ink); border-radius: .75rem;
+      padding: .75rem .9rem; margin: .5rem 0 1rem; display: block; text-decoration: none;
+    }
+    .warning { background: var(--warn-bg); color: var(--warn); }
+    .error { background: var(--warn-bg); color: var(--warn); border-radius: .5rem; padding: .5rem .75rem; }
+    button, .button {
+      font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+      border-radius: 999px; padding: .35rem .8rem; cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    input, textarea, select {
+      font: inherit; width: 100%; padding: .5rem .6rem; border-radius: .5rem;
+      border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    }
+    .day h3 { margin: 0; font-size: .95rem; color: var(--muted); }
+    .day h3::first-letter { text-transform: uppercase; }
+    .day .meal { font-weight: 600; margin: .15rem 0 .4rem; }
+    .day .actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .tabs { display: flex; gap: .5rem; margin: 1rem 0 .5rem; }
+    .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+    .messages { display: flex; flex-direction: column; gap: .5rem; }
+    .message { padding: .55rem .8rem; border-radius: .9rem; max-width: 90%; white-space: pre-wrap; }
+    .message.household { align-self: flex-end; background: var(--me); }
+    .message.agent { align-self: flex-start; background: var(--card); border: 1px solid var(--line); }
+    .message.note { align-self: center; background: var(--note); color: var(--muted); font-size: .85rem; }
+    .status { color: var(--muted); font-size: .85rem; font-style: italic; }
+    .chat-form { display: flex; gap: .5rem; margin-top: .75rem; }
+    .shopping li { list-style: none; padding: .3rem 0; border-bottom: 1px solid var(--line); }
+    .shopping ul { padding: 0; margin: 0; }
+    .shopping label { display: flex; gap: .6rem; align-items: baseline; }
+    .shopping input[type=checkbox] { width: auto; }
+    .shopping label:has(input:checked) { text-decoration: line-through; color: var(--muted); }
+    .plan-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin: 1rem 0; }
+    #errors { position: fixed; left: 1rem; right: 1rem; bottom: 1rem; max-width: 38rem; margin: 0 auto; }
+    .deal { color: var(--accent); font-size: .85rem; }
+    dialog { border: 1px solid var(--line); border-radius: .75rem; background: var(--card); color: var(--ink); max-width: 30rem; }
+  </style>
+</head>
+<body hx-ext="sse">
+  <main>{% block main %}{% endblock %}</main>
+  <div id="errors" aria-live="polite"></div>
+</body>
+</html>

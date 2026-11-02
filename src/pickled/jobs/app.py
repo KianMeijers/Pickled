@@ -14,7 +14,12 @@ app = procrastinate.App(
     connector=procrastinate.PsycopgConnector(
         conninfo=schema_conninfo(Settings().database_url, PROCRASTINATE_SCHEMA)
     ),
-    import_paths=["pickled.jobs.deals", "pickled.jobs.draft", "pickled.jobs.prices"],
+    import_paths=[
+        "pickled.jobs.deals",
+        "pickled.jobs.draft",
+        "pickled.jobs.prices",
+        "pickled.jobs.start",
+    ],
 )
 
 

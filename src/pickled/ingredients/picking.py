@@ -70,7 +70,7 @@ class ProductPicker:
 
     def chosen(self, session: Session, ingredient: Ingredient, store: Store) -> Product | None:
         """The Product chosen for `ingredient` at `store`, picked now if it has none yet."""
-        product = _current_product(session, ingredient, store)
+        product = current_product(session, ingredient, store)
         if product is not None or self._missed_recently(session, ingredient, store):
             return product
         return self._pick(session, ingredient, store)
@@ -83,7 +83,7 @@ class ProductPicker:
             session,
             ingredient,
             store,
-            current=_current_product(session, ingredient, store),
+            current=current_product(session, ingredient, store),
             hint=hint,
         )
 
@@ -199,7 +199,8 @@ def set_product(
     return picker.set_product(session, ingredient, store, hint)
 
 
-def _current_product(session: Session, ingredient: Ingredient, store: Store) -> Product | None:
+def current_product(session: Session, ingredient: Ingredient, store: Store) -> Product | None:
+    """The Product chosen for `ingredient` at `store`, if there is one; never picks."""
     return session.scalars(
         select(Product).where(
             Product.ingredient_id == ingredient.id,
