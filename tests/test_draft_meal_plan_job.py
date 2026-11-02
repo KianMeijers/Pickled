@@ -43,14 +43,6 @@ def retry_decision(exception):
     return draft_meal_plan.retry_strategy.get_retry_decision(exception=exception, job=Attempt(0))
 
 
-def test_missing_deals_are_looked_for_again_when_the_job_says():
-    retry_at = datetime(2026, 10, 15, 19, 0, tzinfo=AMSTERDAM)
-
-    decision = retry_decision(MissingDeals([Store.JUMBO], retry_at=retry_at))
-
-    assert decision.retry_at == retry_at
-
-
 def test_a_failed_draft_is_retried():
     assert retry_decision(RuntimeError("the model timed out")) is not None
 
@@ -75,16 +67,41 @@ def drafted(monkeypatch):
     return weeks
 
 
+def test_missing_deals_queue_a_fresh_draft_of_the_same_week_when_the_job_says(
+    monkeypatch, job_queue
+):
+    retry_at = datetime(2026, 10, 15, 19, 0, tzinfo=AMSTERDAM)
+
+    async def missing(week_start):
+        raise MissingDeals([Store.JUMBO], retry_at=retry_at)
+
+    monkeypatch.setattr(pickled.jobs.draft, "draft_with_the_app", missing)
+
+    asyncio.run(draft_meal_plan(week="2026-10-17"))
+
+    [job] = job_queue.jobs.values()
+    assert (job["task_name"], job["args"], job["attempts"]) == (
+        "draft_meal_plan",
+        {"week": "2026-10-17"},
+        0,
+    )
+    assert job["scheduled_at"] == retry_at
+    assert job["queueing_lock"] == "draft_meal_plan"
+
+
 def test_the_job_drafts_the_week_it_is_given(drafted):
     asyncio.run(draft_meal_plan(week="2026-10-24"))
 
     assert drafted == [date(2026, 10, 24)]
 
 
-def test_the_scheduled_job_drafts_the_next_shopping_day(drafted):
-    asyncio.run(draft_meal_plan(timestamp=0))
+def test_the_scheduled_job_drafts_the_shopping_day_after_when_it_was_scheduled(drafted):
+    thursday_evening = datetime(2026, 10, 15, 18, 0, tzinfo=AMSTERDAM)
 
-    assert drafted == [next_shopping_day(datetime.now(AMSTERDAM).date())]
+    # A retry may run after midnight on Friday, and must still draft that Saturday's week.
+    asyncio.run(draft_meal_plan(timestamp=int(thursday_evening.timestamp())))
+
+    assert drafted == [date(2026, 10, 17)]
 
 
 def test_jobs_run_drafts_the_next_shopping_day(drafted):

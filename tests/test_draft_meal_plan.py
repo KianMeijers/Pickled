@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 import pytest
@@ -22,11 +23,12 @@ from planning_helpers import (
 )
 from sqlalchemy import select
 
+import pickled.jobs.draft
 from pickled.agent import DRAFT_CALL_LIMIT, conversation
 from pickled.ingredients import Aisle
 from pickled.jobs.draft import MissingDeals, draft_meal_plan_now
 from pickled.llm import LlmCall, Role, make_chat_model
-from pickled.planning import clear_meal, finish_draft, meal_plan_for, plan_summary
+from pickled.planning import MealPlan, clear_meal, finish_draft, meal_plan_for, plan_summary
 from pickled.stores import Store
 from pickled.taste import Author, add_taste_note, set_household
 
@@ -131,12 +133,14 @@ def test_a_draft_that_hits_the_call_limit_stays_partial(db_session, sessions):
         + [reply("Nooit gevraagd.")]
     )
 
-    draft(sessions, fake, prices)
+    checkpointer = draft(sessions, fake, prices)
 
     assert len(fake.sent) == DRAFT_CALL_LIMIT
     db_session.expire_all()
-    summary = plan_summary(db_session, meal_plan_for(db_session, SATURDAY), prices=prices)
+    meal_plan = meal_plan_for(db_session, SATURDAY)
+    summary = plan_summary(db_session, meal_plan, prices=prices)
     assert not summary.drafted
+    assert asyncio.run(conversation(checkpointer, meal_plan.id)) == []
 
 
 def with_deals_at_both_stores(session) -> FakePrices:
@@ -257,6 +261,29 @@ def test_a_week_whose_draft_is_finished_is_left_alone(db_session, sessions):
     fake = FakeChatModel(replies=[])
 
     draft(sessions, fake, FakePrices())
+
+    assert fake.sent == []
+
+
+def test_a_week_another_run_drafts_while_this_one_waits_for_the_lock_is_left_alone(
+    db_session, sessions, monkeypatch
+):
+    set_household(db_session, people=2)
+    prices = with_deals_at_both_stores(db_session)
+
+    @asynccontextmanager
+    async def finished_by_the_other_run(sessions, meal_plan_id):
+        with sessions.begin() as session:
+            meal_plan = session.get_one(MealPlan, meal_plan_id)
+            for day in WEEK:
+                clear_meal(session, meal_plan, day, today=TODAY, prices=prices)
+            finish_draft(session, meal_plan, now=NOW, prices=prices)
+        yield
+
+    monkeypatch.setattr(pickled.jobs.draft, "plan_lock", finished_by_the_other_run)
+    fake = FakeChatModel(replies=[])
+
+    draft(sessions, fake, prices)
 
     assert fake.sent == []
 

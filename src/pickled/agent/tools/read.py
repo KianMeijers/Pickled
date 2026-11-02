@@ -97,9 +97,9 @@ def _deal(ingredient: str, deal: Deal) -> str:
     if deal.description:
         parts.append(deal.description)
     if deal.price_cents is not None:
-        price = f"€{deal.price_cents / 100:.2f}"
+        price = planning.euros(deal.price_cents)
         if deal.was_price_cents is not None:
-            price += f" (was €{deal.was_price_cents / 100:.2f})"
+            price += f" (was {planning.euros(deal.was_price_cents)})"
         parts.append(price)
     if deal.unit_size:
         parts.append(deal.unit_size)

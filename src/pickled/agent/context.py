@@ -5,9 +5,11 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from functools import cached_property
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from pickled.agent.prompt import WeekFacts, week_facts
 from pickled.ingredients import ProductPicker
 from pickled.planning import MealPlan, Prices
 from pickled.stores import AMSTERDAM
@@ -43,6 +45,12 @@ class PlanContext:
     # The model can call several tools at once, and they run in threads: one at a time keeps
     # each tool's change to the plan whole.
     lock: threading.Lock = field(default_factory=threading.Lock, compare=False, repr=False)
+
+    @cached_property
+    def week_facts(self) -> WeekFacts:
+        """The parts of the system prompt no tool changes, worked out once per run."""
+        with self.sessions() as session:
+            return week_facts(session, session.get_one(MealPlan, self.meal_plan_id))
 
     @contextmanager
     def work(self) -> Iterator[Work]:

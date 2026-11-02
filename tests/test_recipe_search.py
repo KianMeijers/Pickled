@@ -24,3 +24,10 @@ def test_a_recipe_is_found_by_one_of_its_tags(db_session):
     recipe(db_session, "Linzencurry", ("linzen", 200, "g"), tags=["curry"])
 
     assert titles(search_recipes(db_session, "Vegetarisch")) == ["Linzensoep"]
+
+
+def test_a_tag_is_found_whatever_case_it_was_saved_in(db_session):
+    ingredient(db_session, "linzen", Aisle.VOORRAAD)
+    recipe(db_session, "Linzensoep", ("linzen", 200, "g"), tags=["Vegetarisch"])
+
+    assert titles(search_recipes(db_session, "vegetarisch")) == ["Linzensoep"]

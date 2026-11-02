@@ -13,7 +13,8 @@ from datetime import date, datetime, time, timedelta
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.types import Checkpointer
-from procrastinate import RetryDecision
+from procrastinate.exceptions import AlreadyEnqueued
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from pickled.agent import DRAFT_CALL_LIMIT, PlanContext, draft_request, make_agent, thread
@@ -46,6 +47,8 @@ SCHEDULE = "0 18 * * 4"
 DEALS_RETRY = timedelta(hours=1)
 # Drafting waits for missing Deals until this time on the Friday before the Shopping Day.
 DEALS_DEADLINE = time(12)
+# One draft queued at a time.
+QUEUEING_LOCK = "draft_meal_plan"
 
 
 class MissingDeals(Exception):
@@ -54,15 +57,6 @@ class MissingDeals(Exception):
     def __init__(self, stores: list[Store], retry_at: datetime):
         super().__init__(f"No Deals yet from {', '.join(stores)}; trying again at {retry_at}")
         self.retry_at = retry_at
-
-
-class DraftRetry(LlmJobRetry):
-    """Wait for missing Deals until the deadline, and otherwise retry as an LLM job."""
-
-    def get_retry_decision(self, *, exception, job):
-        if isinstance(exception, MissingDeals):
-            return RetryDecision(retry_at=exception.retry_at)
-        return super().get_retry_decision(exception=exception, job=job)
 
 
 async def draft_meal_plan_now(
@@ -82,37 +76,52 @@ async def draft_meal_plan_now(
     stopped; one that hit the call limit stays a partial draft.
     """
     now = clock()
-    with sessions.begin() as session:
-        meal_plan = meal_plan_for(session, week_start)
-        if meal_plan is None:
-            _check_deals(session, week_start, now)
-            meal_plan = start_meal_plan(session, week_start, now=now)
-        elif meal_plan.drafted_at is not None or meal_plan.status != PlanStatus.DRAFT:
-            logger.info("draft_meal_plan %s: already drafted", week_start)
-            return
-        meal_plan_id, week = meal_plan.id, meal_plan.week
-
+    meal_plan_id, week = _meal_plan(sessions, week_start, now)
     agent = make_agent(model, call_limit=DRAFT_CALL_LIMIT, checkpointer=checkpointer)
     config = thread(meal_plan_id)
     context = PlanContext(meal_plan_id, sessions, prices, picker, clock)
-    with (
-        plan_lock(sessions, meal_plan_id),
-        llm_context(job="draft_meal_plan", meal_plan=meal_plan_id),
-    ):
-        state = await agent.aget_state(config)
-        if state.next:
-            logger.info("draft_meal_plan %s: resuming", week_start)
-            await agent.ainvoke(None, config, context=context)
-        elif state.values.get("messages"):
-            logger.info("draft_meal_plan %s: left partial by an earlier run", week_start)
-            return
-        else:
-            await agent.ainvoke({"messages": [draft_request(week, hint)]}, config, context=context)
+    async with plan_lock(sessions, meal_plan_id):
+        # Looked at only with the lock held, as another run may have drafted it meanwhile.
+        with sessions() as session:
+            meal_plan = session.get_one(MealPlan, meal_plan_id)
+            if meal_plan.drafted_at is not None or meal_plan.status != PlanStatus.DRAFT:
+                logger.info("draft_meal_plan %s: already drafted", week_start)
+                return
+        with llm_context(job="draft_meal_plan", meal_plan=meal_plan_id):
+            state = await agent.aget_state(config)
+            if state.next:
+                logger.info("draft_meal_plan %s: resuming", week_start)
+                await agent.ainvoke(None, config, context=context)
+            elif state.values.get("messages"):
+                logger.info("draft_meal_plan %s: left partial by an earlier run", week_start)
+                return
+            else:
+                request = {"messages": [draft_request(week, hint)]}
+                await agent.ainvoke(request, config, context=context)
 
     with sessions() as session:
         drafted = session.get_one(MealPlan, meal_plan_id).drafted_at is not None
     logger.info("draft_meal_plan %s: %s", week_start, "drafted" if drafted else "partial")
     notify("meal_plan_drafted" if drafted else "meal_plan_partial", week_start=week_start)
+
+
+def _meal_plan(
+    sessions: sessionmaker[Session], week_start: date, now: datetime
+) -> tuple[int, list[date]]:
+    """The week's Meal Plan, started if it has none yet once the Deals are in."""
+    try:
+        with sessions.begin() as session:
+            meal_plan = meal_plan_for(session, week_start)
+            if meal_plan is None:
+                _check_deals(session, week_start, now)
+                meal_plan = start_meal_plan(session, week_start, now=now)
+            return meal_plan.id, meal_plan.week
+    except IntegrityError:
+        # Another run started the week's plan at the same moment: draft that one.
+        with sessions() as session:
+            meal_plan = meal_plan_for(session, week_start)
+            assert meal_plan is not None
+            return meal_plan.id, meal_plan.week
 
 
 def deals_deadline(week_start: date) -> datetime:
@@ -146,13 +155,32 @@ async def draft_with_the_app(week_start: date) -> None:
             )
 
 
-@app.task(name="draft_meal_plan", retry=DraftRetry(max_attempts=2, wait=600))
+@app.task(name="draft_meal_plan", retry=LlmJobRetry(max_attempts=2, wait=600))
 async def draft_meal_plan(week: str | None = None, timestamp: int | None = None) -> None:
-    """Draft the Meal Plan for the week from Shopping Day `week`, by default the next one."""
-    today = datetime.now(AMSTERDAM).date()
-    week_start = date.fromisoformat(week) if week else next_shopping_day(today)
+    """Draft the Meal Plan for the week from Shopping Day `week`. By default that is the next
+    one after the time the job was scheduled (`timestamp`), or after now when run by hand.
+
+    While Deals are missing it queues a fresh job for later rather than retrying, so the
+    waiting doesn't use up the retries a failed draft gets.
+    """
+    if week is not None:
+        week_start = date.fromisoformat(week)
+    else:
+        scheduled = datetime.now(AMSTERDAM)
+        if timestamp is not None:
+            scheduled = datetime.fromtimestamp(timestamp, AMSTERDAM)
+        week_start = next_shopping_day(scheduled.date())
     logger.info("draft_meal_plan %s: start", week_start)
-    await draft_with_the_app(week_start)
+    try:
+        await draft_with_the_app(week_start)
+    except MissingDeals as missing:
+        logger.info("draft_meal_plan %s: %s", week_start, missing)
+        try:
+            await draft_meal_plan.configure(
+                schedule_at=missing.retry_at, queueing_lock=QUEUEING_LOCK
+            ).defer_async(week=week_start.isoformat())
+        except AlreadyEnqueued:
+            logger.info("draft_meal_plan %s: a draft is already queued", week_start)
 
 
 def run_draft_meal_plan() -> None:
@@ -160,4 +188,4 @@ def run_draft_meal_plan() -> None:
     asyncio.run(draft_meal_plan())
 
 
-schedule(draft_meal_plan, cron=SCHEDULE, periodic_id="thursday", queueing_lock="draft_meal_plan")
+schedule(draft_meal_plan, cron=SCHEDULE, periodic_id="thursday", queueing_lock=QUEUEING_LOCK)

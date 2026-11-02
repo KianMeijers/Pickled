@@ -36,7 +36,7 @@ def render(summary: PlanSummary) -> str:
         "Shopping cost: " + "; ".join(_shopping(costs) for costs in summary.costs.values()),
         "Meal cost: "
         + "; ".join(
-            f"{STORE_NAMES[c.store]} {_money(c.meal_cents, c.meal_rough)}"
+            f"{STORE_NAMES[c.store]} {euros(c.meal_cents, c.meal_rough)}"
             for c in summary.costs.values()
         ),
     ]
@@ -61,7 +61,7 @@ def _day(day: DaySummary) -> str:
     if day.kind == "leftovers":
         what = f"leftovers of {day.leftovers_of}, {what}"
     costs = ", ".join(
-        f"{STORE_NAMES[store]} {_money(cents, day.meal_rough[store])}"
+        f"{STORE_NAMES[store]} {euros(cents, day.meal_rough[store])}"
         for store, cents in day.meal_cents.items()
     )
     return f"{what}: {costs}"
@@ -69,7 +69,7 @@ def _day(day: DaySummary) -> str:
 
 def _shopping(costs: StoreCosts) -> str:
     parts = [
-        f"{STORE_NAMES[costs.store]} {_money(costs.shopping_cents, costs.rough or costs.unpriced)}"
+        f"{STORE_NAMES[costs.store]} {euros(costs.shopping_cents, costs.rough or costs.unpriced)}"
     ]
     if costs.rough:
         parts.append(_count(costs.rough, "estimated"))
@@ -82,12 +82,12 @@ def _goal(check: GoalCheck) -> str:
     if check.kind == FoodGoalKind.OTHER:
         return f"other: {check.text} (not checked by code)"
     money = check.kind == FoodGoalKind.BUDGET_CENTS_PER_WEEK
-    text = f"{GOAL_NAMES[check.kind]} {_bounds(check.min, check.max, money)}"
+    text = describe_goal(check.kind, check.min, check.max)
     if check.kind in (FoodGoalKind.KCAL_PER_DAY, FoodGoalKind.PROTEIN_G_PER_DAY):
         text += f", dinner target {_bounds(check.target_min, check.target_max, money)}"
     if check.met is None:
         return f"{text}: no Meals yet"
-    actual = _money(check.actual) if money else _number(check.actual)
+    actual = euros(check.actual) if money else _number(check.actual)
     return f"{text}: {actual}, {'met' if check.met else 'NOT met'}"
 
 
@@ -99,7 +99,7 @@ def _item(line: ShoppingLine) -> str:
         text += " (own item)"
     elif line.price_cents is not None:
         packs = f"{line.packs} pack" + ("s" if line.packs != 1 else "")
-        text += f", {packs} {_money(line.price_cents, line.rough)}"
+        text += f", {packs} {euros(line.price_cents, line.rough)}"
     else:
         text += ", no price"
     if line.deal:
@@ -109,15 +109,22 @@ def _item(line: ShoppingLine) -> str:
     return text
 
 
+def describe_goal(kind: FoodGoalKind, low, high) -> str:
+    """A Food Goal's name and bounds, such as "budget max €50.00" or "kcal per person per day
+    1800–2200"; not for `FoodGoalKind.OTHER`, which has text instead."""
+    return f"{GOAL_NAMES[kind]} {_bounds(low, high, kind == FoodGoalKind.BUDGET_CENTS_PER_WEEK)}"
+
+
+def euros(cents, rough=False) -> str:
+    """An amount in cents as euros, "≈ " in front if it is `rough`."""
+    return ("≈ " if rough else "") + f"€{Decimal(cents) / 100:.2f}"
+
+
 def _bounds(low, high, money: bool) -> str:
-    show = _money if money else _number
+    show = euros if money else _number
     if low is not None and high is not None:
         return f"{show(low)}–{show(high)}"
     return f"min {show(low)}" if low is not None else f"max {show(high)}"
-
-
-def _money(cents, rough=False) -> str:
-    return ("≈ " if rough else "") + f"€{Decimal(cents) / 100:.2f}"
 
 
 def _number(value) -> str:

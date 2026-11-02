@@ -14,6 +14,7 @@ from langchain.agents.middleware import (
     ModelRequest,
     before_model,
     dynamic_prompt,
+    hook_config,
 )
 from langchain_anthropic.middleware import AnthropicPromptCachingMiddleware
 from langchain_core.language_models import BaseChatModel
@@ -33,6 +34,8 @@ CHAT_CALL_LIMIT = 15
 
 # The request that starts a draft is the Conversation's first turn, but not the Household's.
 DRAFT_REQUEST = "draft-request"
+# Where a run hit its call limit: kept on the thread for the agent, hidden from the Household.
+CALL_LIMIT = "call-limit"
 
 
 def make_agent(model: BaseChatModel, *, call_limit: int, checkpointer: Checkpointer):
@@ -45,7 +48,7 @@ def make_agent(model: BaseChatModel, *, call_limit: int, checkpointer: Checkpoin
             end_after_finish_draft,
             plan_prompt,
             AnthropicPromptCachingMiddleware(),
-            ModelCallLimitMiddleware(run_limit=call_limit),
+            CallLimit(run_limit=call_limit),
         ],
         context_schema=PlanContext,
         checkpointer=checkpointer,
@@ -80,8 +83,12 @@ async def conversation(checkpointer: Checkpointer, meal_plan_id: int) -> list[Ba
 def plan_prompt(request: ModelRequest) -> str:
     context: PlanContext = request.runtime.context
     with context.sessions() as session:
-        meal_plan = session.get_one(MealPlan, context.meal_plan_id)
-        return system_prompt(session, meal_plan, today=context.clock().astimezone(AMSTERDAM).date())
+        return system_prompt(
+            session,
+            session.get_one(MealPlan, context.meal_plan_id),
+            today=context.clock().astimezone(AMSTERDAM).date(),
+            facts=context.week_facts,
+        )
 
 
 @before_model(can_jump_to=["end"])
@@ -106,7 +113,23 @@ def end_after_finish_draft(state: AgentState, runtime: Runtime) -> dict | None:
     return None
 
 
+class CallLimit(ModelCallLimitMiddleware):
+    """Ends the run at the call limit, with its English note marked as not for the Household."""
+
+    @hook_config(can_jump_to=["end"])
+    def before_model(self, state, runtime):
+        update = super().before_model(state, runtime)
+        for message in (update or {}).get("messages", []):
+            message.id = f"{CALL_LIMIT}-{uuid4()}"
+        return update
+
+
 def _shown(message: BaseMessage) -> bool:
     if isinstance(message, HumanMessage):
         return not (message.id or "").startswith(DRAFT_REQUEST)
-    return isinstance(message, AIMessage) and not message.tool_calls and bool(message.text)
+    return (
+        isinstance(message, AIMessage)
+        and not (message.id or "").startswith(CALL_LIMIT)
+        and not message.tool_calls
+        and bool(message.text)
+    )

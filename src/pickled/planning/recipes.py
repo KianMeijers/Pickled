@@ -54,7 +54,8 @@ def save_recipe(
     derived_from: Recipe | None = None,
     now: datetime,
 ) -> Recipe:
-    """Save a new Recipe. Every line is checked before anything is saved."""
+    """Save a new Recipe. Every line is checked before anything is saved. Tags are kept in
+    lower case, as `search_recipes` matches them."""
     if servings < 1:
         raise PlanRefused("A Recipe is for at least one serving.")
     stored = [(_stored_amount(line), _known(session, line)) for line in lines]
@@ -62,7 +63,7 @@ def save_recipe(
         title=title,
         servings=servings,
         steps=steps,
-        tags=list(tags),
+        tags=[tag.strip().lower() for tag in tags],
         kcal=nutrition.kcal,
         protein_g=nutrition.protein_g,
         carbs_g=nutrition.carbs_g,
