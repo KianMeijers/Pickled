@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Pickled</h1>
+<p>Er is nog geen plan voor deze week.</p>
+{% if has_plan %}
+  <a class="banner" href="/plans/{{ upcoming }}">
+    {% if drafting %}Pickled is aan het plannen voor {{ upcoming | day_label }}… bekijk het plan →
+    {% else %}Het plan voor {{ upcoming | day_label }} staat klaar →{% endif %}</a>
+{% elif drafting %}
+  <p class="card status" hx-get="/plans/{{ upcoming }}/drafting" hx-trigger="every 3s"
+     hx-swap="none">Pickled is aan het plannen voor {{ upcoming | day_label }}… Dit duurt een paar
+    minuten.</p>
+{% else %}
+  <div class="card">
+    <p>Zal Pickled het plan vanaf {{ upcoming | day_label }} maken?</p>
+    <button class="primary" hx-post="/plans/draft" hx-target="next .error-slot">Plan maken</button>
+    <div class="error-slot"></div>
+  </div>
+{% endif %}
+{% endblock %}

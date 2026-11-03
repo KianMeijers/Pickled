@@ -60,7 +60,7 @@ def test_a_draft_is_not_retried_once_runware_says_the_credit_has_run_out():
 def drafted(monkeypatch):
     weeks = []
 
-    async def record(week_start):
+    async def record(week_start, **options):
         weeks.append(week_start)
 
     monkeypatch.setattr(pickled.jobs.draft, "draft_with_the_app", record)
@@ -72,7 +72,7 @@ def test_missing_deals_queue_a_fresh_draft_of_the_same_week_when_the_job_says(
 ):
     retry_at = datetime(2026, 10, 15, 19, 0, tzinfo=AMSTERDAM)
 
-    async def missing(week_start):
+    async def missing(week_start, **options):
         raise MissingDeals([Store.JUMBO], retry_at=retry_at)
 
     monkeypatch.setattr(pickled.jobs.draft, "draft_with_the_app", missing)

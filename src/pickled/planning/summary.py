@@ -158,8 +158,9 @@ def plan_summary(session: Session, meal_plan: MealPlan, *, prices: Prices) -> Pl
     )
 
 
-def picked_prices(session: Session, meal_plan: MealPlan, picker: ProductPicker) -> Prices:
-    """The prices the app plans with: each store's chosen Product on the plan's Shopping Day."""
+def picked_prices(session: Session, meal_plan: MealPlan, picker: ProductPicker | None) -> Prices:
+    """The prices the app plans with: each store's chosen Product on the plan's Shopping Day.
+    Without a `picker`, only Products already chosen are priced, and nothing calls out."""
     return PickedPrices(session, meal_plan.week_start, picker)
 
 

@@ -25,12 +25,17 @@ are sold from storage outside their harvest months is our own list, in
 ## Running
 
 ```bash
+uv run uvicorn pickled.web.app:production_app --factory --reload  # the app, on :8000
 uv run pickled worker                               # background jobs and their schedules
 uv run pickled jobs run fetch_deals [--source ah]   # rerun a job by hand, in this process
 uv run pickled jobs run tag_deals [--source ah]     # link untagged Deals to Ingredients
 ```
 
-A finished `fetch_deals` queues `tag_deals` for its store, which the worker runs.
+A finished `fetch_deals` queues `tag_deals` for its store, which the worker runs. Drafts,
+redrafts and the first run's planning are jobs too, so the app needs the worker running.
+
+To run the app and the worker from the Dockerfile instead, as a rehearsal for moving online:
+`docker compose --profile app up --build` (the app is then on http://localhost:8000).
 
 ## Development
 

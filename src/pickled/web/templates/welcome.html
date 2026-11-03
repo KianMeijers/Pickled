@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Welkom · Pickled{% endblock %}
+{% block main %}
+<h1>Welkom bij Pickled</h1>
+<p>Pickled plant elke week je avondeten rond de aanbiedingen bij Albert Heijn en Jumbo en wat
+  er in het seizoen is. Vertel eerst iets over jullie.</p>
+<form class="card" method="post" action="/welkom">
+  <p><label>Met hoeveel personen eten jullie?<br>
+    <input type="number" name="people" min="1" max="12" value="2" required></label></p>
+  <h2>Doelen <span class="muted">(mag leeg blijven)</span></h2>
+  <p><label>Budget per week in euro<br>
+    <input type="text" name="budget_euros" inputmode="decimal" placeholder="bijv. 70"></label></p>
+  <p><label>Aantal vegetarische dagen per week<br>
+    <input type="number" name="vegetarian_days" min="0" max="7"></label></p>
+  <p><label>Minimaal eiwit per persoon per dag (gram)<br>
+    <input type="number" name="protein_g" min="0" max="400"></label></p>
+  <h2>Smaak</h2>
+  <p><label>Wat lusten jullie wel of niet? Eén per regel.<br>
+    <textarea name="taste_notes" rows="4" maxlength="2000"
+              placeholder="Geen spruitjes&#10;Houden van pittig eten"></textarea></label></p>
+  <button class="primary">Begin met plannen</button>
+</form>
+{% endblock %}

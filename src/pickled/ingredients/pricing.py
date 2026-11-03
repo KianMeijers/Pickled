@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pickled.ingredients.models import Ingredient, PriceObservation, PriceSource, Product
-from pickled.ingredients.picking import ProductPicker
+from pickled.ingredients.picking import ProductPicker, current_product
 from pickled.stores import AMSTERDAM, Store
 
 # A price observed longer ago than this before the day it is for is only a rough guide.
@@ -31,11 +31,18 @@ class Price:
 
 
 def price_for(
-    session: Session, ingredient: Ingredient, store: Store, *, on: date, picker: ProductPicker
+    session: Session,
+    ingredient: Ingredient,
+    store: Store,
+    *,
+    on: date,
+    picker: ProductPicker | None,
 ) -> Price | None:
     """The regular price of `ingredient` at `store` on `on`, or None if neither store has one.
 
     Without a Product or a price at `store`, the other store's price is used, marked rough.
+    `picker` picks a Product the first time and looks up a price gone stale; without one,
+    only the Products and prices already known are read, so nothing calls out.
     """
     price = _store_price(session, ingredient, store, on, picker)
     if price is not None:
@@ -46,12 +53,16 @@ def price_for(
 
 
 def _store_price(
-    session: Session, ingredient: Ingredient, store: Store, on: date, picker: ProductPicker
+    session: Session, ingredient: Ingredient, store: Store, on: date, picker: ProductPicker | None
 ) -> Price | None:
-    product = picker.chosen(session, ingredient, store)
+    if picker is None:
+        product = current_product(session, ingredient, store)
+    else:
+        product = picker.chosen(session, ingredient, store)
     if product is None:
         return None
-    picker.refresh(session, product)
+    if picker is not None:
+        picker.refresh(session, product)
     observation = _current_deal_observation(session, product, on) or _latest_observation(
         session, product
     )

@@ -1,0 +1,11 @@
+<div id="messages" class="messages">
+  {% for message in messages %}
+    {% if is_note(message) %}
+      <div class="message note">{{ message.text }}</div>
+    {% elif message.type == "human" %}
+      <div class="message household">{{ message.text }}</div>
+    {% else %}
+      <div class="message agent">{{ message.text }}</div>
+    {% endif %}
+  {% endfor %}
+</div>

@@ -7,7 +7,7 @@ import time
 from sqlalchemy.orm import sessionmaker
 
 from pickled.planning import plan_lock
-from pickled.planning.locks import LOCK, MEAL_PLAN_LOCKS, UNLOCK
+from pickled.planning.locks import LOCK, MEAL_PLAN_LOCKS, TRY_LOCK, UNLOCK
 
 MEAL_PLAN_ID = 987_654
 HELD_FOR = 0.5
@@ -45,3 +45,30 @@ def test_waiting_for_the_lock_leaves_other_jobs_running(test_engine):
 
     assert waited >= HELD_FOR * 0.9
     assert ticks_while_waiting >= 5
+
+
+def test_a_cancelled_wait_leaves_the_lock_free(test_engine):
+    keys = {"space": MEAL_PLAN_LOCKS, "id": MEAL_PLAN_ID}
+    holder = test_engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+    holder.execute(LOCK, keys)
+
+    async def scenario():
+        async def wait_for_the_lock():
+            async with plan_lock(sessionmaker(bind=test_engine), MEAL_PLAN_ID):
+                pass
+
+        waiter = asyncio.create_task(wait_for_the_lock())
+        await asyncio.sleep(HELD_FOR)
+        waiter.cancel()
+        await asyncio.gather(waiter, return_exceptions=True)
+        holder.execute(UNLOCK, keys)
+        await asyncio.sleep(HELD_FOR)
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        holder.close()
+
+    with test_engine.connect() as other:
+        assert other.execute(TRY_LOCK, keys).scalar_one()
+        other.execute(UNLOCK, keys)

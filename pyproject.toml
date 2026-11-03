@@ -18,7 +18,9 @@ dependencies = [
     "procrastinate>=3.10.0",
     "psycopg[binary,pool]>=3.3.6",
     "pydantic-settings>=2.15.0",
+    "python-multipart>=0.0.33",
     "sqlalchemy>=2.1.4",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [project.scripts]

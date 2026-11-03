@@ -1,0 +1,33 @@
+{% set week = summary.week_start %}
+<div id="shopping" class="shopping"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if summary.store %}
+  <p class="muted">Bij {{ stores[summary.store] }} ·
+    {{ summary.costs[summary.store].shopping_cents | euros(summary.costs[summary.store].rough > 0) }}
+    {% if summary.costs[summary.store].rough %}({{ summary.costs[summary.store].rough }} geschat){% endif %}</p>
+  {% endif %}
+  {% for (store, aisle), lines in summary.to_buy.items() %}
+  <h2>{{ aisles[aisle] }}{% if store and store != summary.store %} · {{ stores[store] }}{% endif %}</h2>
+  <ul>
+    {% for line in lines %}
+    <li>
+      <label>
+        <input type="checkbox" name="checked" {{ 'checked' if line.checked }} {{ 'disabled' if unsaved }}
+               hx-post="/plans/{{ week }}/shopping/{{ line.id }}" hx-trigger="change" hx-swap="none">
+        <span>{{ line.name }} <span class="muted">{{ line.quantity | amount(line.unit) }}</span>
+          {% if line.deal %}<span class="deal">· {{ line.deal }}</span>{% endif %}</span>
+      </label>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">De lijst is nog leeg.</p>
+  {% endfor %}
+  {% if summary.check_you_have %}
+  <h2>Check of je dit in huis hebt</h2>
+  <ul>{% for line in summary.check_you_have %}<li>{{ line.name }}</li>{% endfor %}</ul>
+  {% endif %}
+  <form class="chat-form" hx-post="/plans/{{ week }}/shopping" hx-target="#shopping" hx-swap="outerHTML">
+    <input name="name" required placeholder="Zelf iets toevoegen, bijv. wc-papier" aria-label="Boodschap">
+    <button>Voeg toe</button>
+  </form>
+</div>

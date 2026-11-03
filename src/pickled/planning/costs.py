@@ -43,7 +43,7 @@ class PickedPrices:
 
     session: Session
     on: date
-    picker: ProductPicker
+    picker: ProductPicker | None
 
     def regular(self, ingredient: Ingredient, store: Store) -> Price | None:
         return price_for(self.session, ingredient, store, on=self.on, picker=self.picker)

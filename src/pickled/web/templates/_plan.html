@@ -1,0 +1,73 @@
+{% set week = summary.week_start %}
+<div id="plan-panel"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <p class="muted">
+    {% if summary.status == "accepted" %}Geaccepteerd{% elif summary.drafted %}Concept{% else %}Concept, nog niet af{% endif %}
+    · {{ summary.people }} personen
+    {% if summary.store %}· {{ stores[summary.store] }}
+    · {{ summary.costs[summary.store].shopping_cents | euros(summary.costs[summary.store].rough > 0) }}{% endif %}
+  </p>
+
+  {% for day in summary.days %}
+  <article class="card day">
+    <h3>{{ day.date | day_label }}</h3>
+    {% if day.kind == "recipe" %}
+      <p class="meal">{{ day.title }}</p>
+      <p class="muted">{{ day.servings }} porties{% if summary.store %} · {{ day.meal_cents[summary.store] | euros(day.meal_rough[summary.store]) }}{% endif %}</p>
+    {% elif day.kind == "leftovers" %}
+      <p class="meal">Restjes van {{ day.leftovers_of | weekday }}</p>
+      <p class="muted">{{ day.title }} · {{ day.servings }} porties</p>
+    {% elif day.kind == "empty" %}
+      <p class="meal muted">Geen maaltijd</p>
+    {% else %}
+      <p class="meal muted">Nog niet gepland</p>
+    {% endif %}
+    {% if day.date >= today and not drafting %}
+    <div class="actions" hx-target="#messages" hx-swap="beforeend">
+      <button hx-post="/plans/{{ week }}/days/{{ day.date }}/replace">Vervang</button>
+      {% if not loop.first %}
+      <button hx-post="/plans/{{ week }}/days/{{ day.date }}/leftovers">Restjes</button>
+      {% endif %}
+      {% if day.kind != "empty" %}
+      <button hx-post="/plans/{{ week }}/days/{{ day.date }}/clear"
+              hx-target="#plan-panel" hx-swap="outerHTML">Overslaan</button>
+      {% endif %}
+    </div>
+    {% endif %}
+  </article>
+  {% endfor %}
+
+  {% if summary.goals %}
+  <h2>Doelen</h2>
+  <ul>{% for check in summary.goals %}<li>{{ check | goal }}{% if check.met == false %} ⚠️{% endif %}</li>{% endfor %}</ul>
+  {% endif %}
+  {% for found in summary.warnings if found.kind != "rough" %}
+  <p class="card warning">{{ found | warning }}</p>
+  {% endfor %}
+  {% set rough = summary.warnings | selectattr("kind", "equalto", "rough") | map(attribute="ingredient") | list %}
+  {% if rough %}
+  <p class="card warning">Geschatte prijzen: {{ rough | join(", ") }}.</p>
+  {% endif %}
+
+  {% if summary.status == "draft" and not drafting %}
+  <div class="plan-actions">
+    {% if summary.complete %}
+    <button class="primary" hx-post="/plans/{{ week }}/accept"
+            hx-target="#plan-panel" hx-swap="outerHTML">Plan accepteren</button>
+    {% endif %}
+    <button onclick="document.getElementById('redraft').showModal()">Opnieuw plannen</button>
+  </div>
+  <dialog id="redraft">
+    <form hx-post="/plans/{{ week }}/redraft">
+      <h2>Opnieuw plannen?</h2>
+      <p>Pickled maakt een heel nieuw plan voor deze week. Alle maaltijden worden vervangen;
+        je eigen boodschappen blijven staan.</p>
+      <p><label>Wens voor het nieuwe plan <span class="muted">(mag leeg)</span><br>
+        <textarea name="hint" rows="2" placeholder="bijv. meer vis, minder pasta"></textarea></label></p>
+      <div class="plan-actions">
+        <button class="primary">Ja, opnieuw plannen</button>
+        <button type="button" onclick="this.closest('dialog').close()">Annuleer</button>
+      </div>
+    </form>
+  </dialog>
+  {% endif %}
+</div>

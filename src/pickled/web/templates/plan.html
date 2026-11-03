@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Plan vanaf {{ summary.week_start | day_label }} · Pickled{% endblock %}
+{% block main %}
+{% if next_week %}
+<a class="banner" href="/plans/{{ next_week }}">Het plan voor volgende week staat klaar →</a>
+{% endif %}
+<h1>Week van {{ summary.week_start | day_label }}</h1>
+
+<div class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" aria-controls="tab-plan"
+          onclick="showTab(this)">Plan</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-shopping"
+          onclick="showTab(this)">Boodschappen</button>
+</div>
+
+<section id="tab-plan" role="tabpanel">
+  {% include "_plan.html" %}
+  <h2>Gesprek</h2>
+  {% include "_conversation.html" %}
+  {% if drafting %}
+  <p class="status" hx-get="/plans/{{ summary.week_start }}/drafting" hx-trigger="every 3s"
+     hx-swap="none">Pickled is aan het plannen…</p>
+  {% endif %}
+  <form class="chat-form" hx-post="/plans/{{ summary.week_start }}/chat"
+        hx-target="#messages" hx-swap="beforeend"
+        hx-on::after-request="if (event.detail.successful) this.reset()">
+    <textarea name="message" rows="2" required aria-label="Bericht aan Pickled"
+              placeholder="{{ 'Pickled is aan het plannen…' if drafting else 'Vraag iets over dit plan…' }}"
+              {{ 'disabled' if drafting }}></textarea>
+    <button class="primary" {{ 'disabled' if drafting }}>Stuur</button>
+  </form>
+</section>
+
+<section id="tab-shopping" role="tabpanel" hidden>
+  {% include "_shopping.html" %}
+</section>
+
+<script>
+  function showTab(tab) {
+    for (const other of document.querySelectorAll('[role=tab]')) {
+      const selected = other === tab;
+      other.setAttribute('aria-selected', selected);
+      document.getElementById(other.getAttribute('aria-controls')).hidden = !selected;
+    }
+  }
+</script>
+{% endblock %}
