@@ -31,6 +31,7 @@ templates.env.filters.update(
     day_label=text.day_label,
     weekday=text.weekday,
     euros=text.euros,
+    dollars=text.dollars,
     amount=text.amount,
     goal=text.goal,
     warning=text.warning,
@@ -40,7 +41,7 @@ templates.env.globals.update(stores=text.STORES, aisles=text.AISLES, is_note=is_
 
 def create_app(services: Services | None = None, *, lifespan=None) -> FastAPI:
     """The app on `services`, or on those its `lifespan` sets up."""
-    from pickled.web import chat, onboarding, pages, plans
+    from pickled.web import chat, onboarding, pages, plans, settings
 
     app = FastAPI(title="Pickled", lifespan=lifespan)
     if services is not None:
@@ -51,6 +52,7 @@ def create_app(services: Services | None = None, *, lifespan=None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(plans.router)
     app.include_router(onboarding.router)
+    app.include_router(settings.router)
     app.add_exception_handler(StarletteHTTPException, refused)
     return app
 

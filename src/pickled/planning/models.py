@@ -58,6 +58,8 @@ class MealPlan(Base):
     # When the draft was finished; a draft without it is partial.
     drafted_at: Mapped[datetime | None]
     accepted_at: Mapped[datetime | None]
+    # When `reflect_on_week` merged the week's Conversation into the Taste notes.
+    reflected_at: Mapped[datetime | None]
 
     meals: Mapped[list[Meal]] = relationship(
         back_populates="meal_plan", order_by="Meal.date", cascade="all, delete-orphan"

@@ -1,0 +1,17 @@
+The week of the Meal Plan from {{ week_start }} has ended. Below are the Household's Taste notes
+and the week's Conversation.
+
+# Taste notes
+
+{% for note in notes %}
+- [{{ note.id }}] ({{ "written by the Household" if note.author == "user" else "yours" }}) {{ note.text }}
+{% else %}
+(none yet)
+{% endfor %}
+
+# The Conversation
+
+{% for speaker, text in conversation %}
+{{ speaker }}: {{ text }}
+
+{% endfor %}

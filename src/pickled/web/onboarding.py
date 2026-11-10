@@ -54,7 +54,7 @@ async def onboard(
     now = services.clock()
     try:
         budget, vegetarian, protein = (
-            _number(field) for field in (budget_euros, vegetarian_days, protein_g)
+            form_number(field) for field in (budget_euros, vegetarian_days, protein_g)
         )
         with services.sessions.begin() as session:
             session.execute(ONE_AT_A_TIME)
@@ -87,7 +87,7 @@ async def onboard(
     return RedirectResponse("/", status_code=303)
 
 
-def _number(field: str) -> Decimal | None:
+def form_number(field: str) -> Decimal | None:
     """A form's number, in Dutch or English notation; None if left blank."""
     field = field.strip().replace(",", ".")
     return Decimal(field) if field else None

@@ -29,10 +29,18 @@ uv run uvicorn pickled.web.app:production_app --factory --reload  # the app, on 
 uv run pickled worker                               # background jobs and their schedules
 uv run pickled jobs run fetch_deals [--source ah]   # rerun a job by hand, in this process
 uv run pickled jobs run tag_deals [--source ah]     # link untagged Deals to Ingredients
+uv run pickled jobs run reflect_on_week             # merge ended weeks' chats into Taste notes
+uv run pickled jobs run check_llm_balance           # read the Runware balance
 ```
 
 A finished `fetch_deals` queues `tag_deals` for its store, which the worker runs. Drafts,
 redrafts and the first run's planning are jobs too, so the app needs the worker running.
+
+Once this month's LLM spend reaches `PICKLED_LLM_MONTHLY_CAP_USD` (default $25), the worker
+skips `tag_deals`, `draft_meal_plan` and `reflect_on_week` until the next month; chat keeps
+working. A job run by hand with `pickled jobs run` goes ahead regardless. The status line at
+the top of every page warns from 80% of the cap, and when the Runware balance is below
+`PICKLED_LLM_MIN_BALANCE_USD` (default $5).
 
 To run the app and the worker from the Dockerfile instead, as a rehearsal for moving online:
 `docker compose --profile app up --build` (the app is then on http://localhost:8000).

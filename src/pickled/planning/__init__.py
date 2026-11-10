@@ -33,6 +33,7 @@ from pickled.planning.plans import (
     shopping_day_of,
     start_meal_plan,
     upcoming_shopping_day,
+    weeks_to_reflect_on,
 )
 from pickled.planning.recipes import (
     Nutrition,
@@ -100,4 +101,5 @@ __all__ = [
     "start_meal_plan",
     "tick_shopping_item",
     "upcoming_shopping_day",
+    "weeks_to_reflect_on",
 ]

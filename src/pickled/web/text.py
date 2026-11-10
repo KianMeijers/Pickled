@@ -49,6 +49,13 @@ def euros(cents: int | Decimal | None, rough: bool = False) -> str:
     return ("≈ " if rough else "") + f"€ {amount}"
 
 
+def dollars(usd: Decimal | None) -> str:
+    """Like "$ 3,20": LLM costs and the Runware balance are in USD."""
+    if usd is None:
+        return "–"
+    return f"$ {Decimal(usd):.2f}".replace(".", ",")
+
+
 def amount(quantity: Decimal | None, unit: str | None) -> str:
     """A Shopping List amount, like "300 g" or "2 st"; empty for "to taste"."""
     if quantity is None:

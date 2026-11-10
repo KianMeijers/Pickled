@@ -2,6 +2,7 @@
 
 import functools
 import logging
+import time
 from collections.abc import Callable
 
 from langchain.tools import ToolRuntime
@@ -23,18 +24,26 @@ def agent_tool(func: Callable[..., str]) -> BaseTool:
     """A tool for the agent. Its docstring is what the agent reads about it.
 
     A refused change rolls back and comes back to the agent as an error result. Each call is
-    logged by name, without its arguments.
+    logged by name, with its duration and outcome but not its arguments.
     """
 
     @functools.wraps(func)
     def logged(*args, **kwargs) -> str:
+        started = time.monotonic()
+        outcome = "error"
         try:
             result = func(*args, **kwargs)
+            outcome = "ok"
+            return result
         except REFUSALS as error:
-            logger.info("tool %s: refused", func.__name__)
+            outcome = "refused"
             raise ToolException(str(error)) from error
-        logger.info("tool %s", func.__name__)
-        return result
+        except Exception as error:
+            outcome = f"error {type(error).__name__}"
+            raise
+        finally:
+            took = round((time.monotonic() - started) * 1000)
+            logger.info("tool %s: %s in %dms", func.__name__, outcome, took)
 
     made = tool(logged)
     made.handle_tool_error = True

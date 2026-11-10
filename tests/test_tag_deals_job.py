@@ -90,7 +90,7 @@ def test_a_failed_fetch_queues_no_tagging(monkeypatch, job_queue):
 def tagged(monkeypatch):
     stores = []
     monkeypatch.setattr(
-        pickled.jobs.deals, "tag_deals_now", lambda store, sessions, now: stores.append(store)
+        pickled.jobs.deals, "tag_deals_now", lambda store, sessions, **options: stores.append(store)
     )
     return stores
 

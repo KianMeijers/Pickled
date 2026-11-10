@@ -4,16 +4,20 @@ All schedules are in Europe/Amsterdam time.
 """
 
 from pickled.jobs.app import app
+from pickled.jobs.balance import run_check_llm_balance
 from pickled.jobs.deals import run_fetch_deals, run_tag_deals
 from pickled.jobs.draft import run_draft_meal_plan
 from pickled.jobs.prices import run_refresh_checkjebon
+from pickled.jobs.reflect import run_reflect_on_week
 
 # What `pickled jobs run <job> [--source …]` can run by hand: the jobs run per store take a
 # source, and the store-wide ones don't.
 PER_STORE = {"fetch_deals": run_fetch_deals, "tag_deals": run_tag_deals}
 STORE_WIDE = {
+    "check_llm_balance": run_check_llm_balance,
     "refresh_checkjebon": run_refresh_checkjebon,
     "draft_meal_plan": run_draft_meal_plan,
+    "reflect_on_week": run_reflect_on_week,
 }
 RUNNABLE = PER_STORE.keys() | STORE_WIDE.keys()
 

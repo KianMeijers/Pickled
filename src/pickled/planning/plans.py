@@ -55,6 +55,21 @@ def meal_plan_for(session: Session, week_start: date) -> MealPlan | None:
     return session.scalars(select(MealPlan).where(MealPlan.week_start == week_start)).first()
 
 
+def weeks_to_reflect_on(session: Session, *, today: date) -> list[int]:
+    """The Meal Plans whose week ended before `today` and that haven't been reflected on, oldest
+    first."""
+    return list(
+        session.scalars(
+            select(MealPlan.id)
+            .where(
+                MealPlan.week_start <= today - timedelta(days=7),
+                MealPlan.reflected_at.is_(None),
+            )
+            .order_by(MealPlan.week_start)
+        )
+    )
+
+
 def set_store(
     session: Session, meal_plan: MealPlan, store: Store, *, today: date, prices: Prices
 ) -> PlanSummary:

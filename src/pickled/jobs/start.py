@@ -25,6 +25,7 @@ async def start_planning(week: str) -> None:
     A store whose Deals can't be fetched is left out: the draft then waits for its Deals as
     a scheduled draft does.
     """
+    logger.info("start_planning %s: start", week)
     sessions = default_sessions()
     for store in Store:
         try:
@@ -34,3 +35,4 @@ async def start_planning(week: str) -> None:
         except Exception:
             logger.exception("start_planning %s: no Deals from %s", week, store)
     await draft_meal_plan(week=week)
+    logger.info("start_planning %s: done", week)

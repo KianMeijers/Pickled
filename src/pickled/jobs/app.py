@@ -15,9 +15,11 @@ app = procrastinate.App(
         conninfo=schema_conninfo(Settings().database_url, PROCRASTINATE_SCHEMA)
     ),
     import_paths=[
+        "pickled.jobs.balance",
         "pickled.jobs.deals",
         "pickled.jobs.draft",
         "pickled.jobs.prices",
+        "pickled.jobs.reflect",
         "pickled.jobs.start",
     ],
 )
