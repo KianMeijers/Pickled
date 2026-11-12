@@ -118,6 +118,8 @@ def clear_food_goal(session: Session, kind: FoodGoalKind, *, now: datetime) -> N
 
 
 def _check_text(text: str) -> None:
+    if not text.strip():
+        raise TasteRefused("A Taste note needs a text.")
     if len(text) > MAX_NOTE_LENGTH:
         raise TasteRefused(f"A Taste note is at most {MAX_NOTE_LENGTH} characters.")
 

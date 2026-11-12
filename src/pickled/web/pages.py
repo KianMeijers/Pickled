@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pickled.agent import conversation
+from pickled.llm import spend_cap
 from pickled.planning import (
     meal_plan_for,
     plan_lock_if_free,
@@ -17,6 +18,7 @@ from pickled.taste import household
 from pickled.web.app import templates
 from pickled.web.drafting import drafting
 from pickled.web.services import services_of
+from pickled.web.status import status_line
 
 router = APIRouter()
 
@@ -64,6 +66,7 @@ async def plan_page(request: Request, week_start: date):
             if free:
                 session.commit()
         next_week_ready = week_start != next_week and meal_plan_for(session, next_week) is not None
+        capped = spend_cap(session, now=services.clock()).reached
     messages = await conversation(services.checkpointer, meal_plan_id)
     return templates.TemplateResponse(
         request,
@@ -75,6 +78,7 @@ async def plan_page(request: Request, week_start: date):
             "drafting": await drafting(services, week_start, meal_plan_id),
             "today": services.today(),
             "unsaved": not free,
+            "capped": capped,
         },
     )
 
@@ -90,3 +94,10 @@ async def still_drafting(request: Request, week_start: date):
         return Response()
     # 286 tells HTMX to stop polling.
     return Response(status_code=286, headers={"HX-Refresh": "true"})
+
+
+@router.get("/status", response_class=HTMLResponse)
+async def status(request: Request):
+    """The status line, loaded by every page."""
+    lines = await status_line(services_of(request))
+    return templates.TemplateResponse(request, "_status.html", {"lines": lines})

@@ -21,6 +21,10 @@
   <p class="status" hx-get="/plans/{{ summary.week_start }}/drafting" hx-trigger="every 3s"
      hx-swap="none">Pickled is aan het plannen…</p>
   {% endif %}
+  {% if capped %}
+  <p class="card warning">Het maandbudget voor LLM-kosten is op: Pickled plant en leert even niet
+    vanzelf, maar chatten kan nog.</p>
+  {% endif %}
   <form class="chat-form" hx-post="/plans/{{ summary.week_start }}/chat"
         hx-target="#messages" hx-swap="beforeend"
         hx-on::after-request="if (event.detail.successful) this.reset()">

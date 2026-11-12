@@ -4,6 +4,7 @@ import asyncio
 import re
 from contextlib import contextmanager
 from datetime import date, datetime
+from decimal import Decimal
 
 import pytest
 from fakes import FakeChatModel, reply, tool_calls
@@ -17,7 +18,7 @@ import pickled.web.chat as chat_module
 from pickled.agent import conversation, thread
 from pickled.ingredients import Aisle
 from pickled.jobs.draft import QUEUEING_LOCK, draft_meal_plan
-from pickled.llm import Role, make_chat_model
+from pickled.llm import LlmCall, Role, make_chat_model
 from pickled.planning import (
     ShoppingListItem,
     clear_meal,
@@ -538,3 +539,77 @@ def test_a_chat_turn_whose_model_fails_says_so_and_frees_the_plan(db_session, we
     web.fake.replies = [reply("Hallo!")]
     retried = chat(web, SATURDAY, "Hallo?")
     assert "".join(data for name, data in retried if name == "token") == "Hallo!"
+
+
+def test_every_page_loads_the_status_line(db_session, web):
+    drafted_week(db_session, web.prices)
+
+    page = web.client.get(f"/plans/{SATURDAY}")
+
+    assert 'hx-get="/status"' in page.text
+
+
+def test_the_status_line_lists_its_warnings(db_session, web):
+    web.now = datetime(2026, 10, 15, 18, 0, tzinfo=AMSTERDAM)
+
+    fragment = web.client.get("/status")
+
+    assert "Er zijn geen aanbiedingen van Albert Heijn." in fragment.text
+    assert "Er zijn geen aanbiedingen van Jumbo." in fragment.text
+
+
+def spend_the_cap(session):
+    session.add(
+        LlmCall(
+            called_at=NOW,
+            role=Role.CHAT,
+            model="claude-sonnet-5-5",
+            input_tokens=0,
+            cache_write_tokens=0,
+            cache_read_tokens=0,
+            output_tokens=0,
+            cost_usd=Decimal("25"),
+        )
+    )
+    session.flush()
+
+
+def test_chat_shows_a_banner_once_the_spend_cap_is_reached(db_session, web):
+    drafted_week(db_session, web.prices)
+    before = web.client.get(f"/plans/{SATURDAY}")
+    spend_the_cap(db_session)
+
+    after = web.client.get(f"/plans/{SATURDAY}")
+
+    banner = "Het maandbudget voor LLM-kosten is op"
+    assert banner not in before.text
+    assert banner in after.text
+
+
+@pytest.mark.parametrize(
+    "answers",
+    [
+        {"people": "0"},
+        {"people": "2", "budget_euros": "-5"},
+        {"people": "2", "budget_euros": "nan"},
+        {"people": "2", "vegetarian_days": "8"},
+        {"people": "2", "protein_g": "2.5"},
+    ],
+)
+def test_onboarding_refuses_answers_that_cant_be_right(db_session, web, job_queue, answers):
+    refused = web.client.post("/welkom", data=answers, follow_redirects=False)
+
+    assert refused.status_code == 422
+    assert household(db_session) is None
+    assert queued(job_queue) == []
+
+
+def test_a_change_sent_from_another_sites_page_is_refused(db_session, web, job_queue):
+    elsewhere = {"Origin": "https://elsewhere.example"}
+
+    refused = web.client.post("/plans/draft", headers=elsewhere)
+
+    assert refused.status_code == 403
+    assert queued(job_queue) == []
+    same = {"Origin": str(web.client.base_url).rstrip("/")}
+    assert web.client.post("/plans/draft", headers=same).status_code != 403

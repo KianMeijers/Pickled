@@ -13,9 +13,16 @@ from procrastinate.tasks import Task
 from sqlalchemy.orm import Session, sessionmaker
 
 from pickled.db import default_sessions
-from pickled.deals import DealSource, save_fetch, source_for, tag_deals
-from pickled.jobs.app import app, schedule
-from pickled.llm import Role, llm_context, make_chat_model, out_of_credit
+from pickled.deals import (
+    DealPayloadError,
+    DealSource,
+    save_fetch,
+    source_for,
+    tag_deals,
+)
+from pickled.jobs.app import LlmJobRetry, app, schedule
+from pickled.jobs.spend import at_the_cap
+from pickled.llm import Role, llm_context, make_chat_model
 from pickled.stores import (
     AMSTERDAM,
     REQUEST_BUDGET,
@@ -28,8 +35,8 @@ from pickled.stores import (
 
 logger = logging.getLogger(__name__)
 
-# AH's Bonus week starts on Monday and Jumbo's on Wednesday; both are refreshed on Thursday,
-# before the Saturday Shopping Day.
+# AH's Bonus week starts on Monday and Jumbo's on Wednesday, so each is fetched that morning;
+# both are fetched again on Thursday, before the Saturday Shopping Day.
 SCHEDULES = [
     (Store.AH, "0 6 * * 1", "monday"),
     (Store.JUMBO, "0 6 * * 3", "wednesday"),
@@ -39,19 +46,14 @@ SCHEDULES = [
 
 
 class FetchRetry(RetryStrategy):
-    """Retry a failed fetch with backoff, but not once the store's request budget is spent."""
+    """Retry a failed fetch with backoff, unless trying again would fail the same way.
+
+    A spent request budget and a payload that has changed shape stay as they are, and each
+    retry of an AH fetch costs a large part of the week's budget.
+    """
 
     def get_retry_decision(self, *, exception, job):
-        if isinstance(exception, RequestBudgetExceeded):
-            return None
-        return super().get_retry_decision(exception=exception, job=job)
-
-
-class LlmJobRetry(RetryStrategy):
-    """Retry a failed LLM job, but not once Runware's credit has run out (spec §9)."""
-
-    def get_retry_decision(self, *, exception, job):
-        if out_of_credit(exception):
+        if isinstance(exception, RequestBudgetExceeded | DealPayloadError):
             return None
         return super().get_retry_decision(exception=exception, job=job)
 
@@ -102,8 +104,12 @@ def tag_deals_now(
     *,
     now: datetime,
     model: BaseChatModel | None = None,
+    capped: bool = True,
 ) -> None:
-    """Link `store`'s untagged current Deals to Ingredients, or mark them non-food."""
+    """Link `store`'s untagged current Deals to Ingredients, or mark them non-food. Skipped at
+    the monthly spend cap, unless not `capped`."""
+    if capped and at_the_cap(f"tag_deals {store}", sessions, now=now):
+        return
     with llm_context(job="tag_deals"):
         tag_deals(
             sessions,
@@ -115,9 +121,12 @@ def tag_deals_now(
 
 
 @app.task(name="tag_deals", retry=LlmJobRetry(max_attempts=2, wait=600))
-def tag_deals_job(source: str) -> None:
+def tag_deals_job(source: str, by_hand: bool = False) -> None:
+    """Tag `source`'s Deals; run `by_hand`, even at the monthly spend cap."""
     logger.info("tag_deals %s: start", source)
-    tag_deals_now(Store(source), default_sessions(), now=datetime.now(AMSTERDAM))
+    tag_deals_now(
+        Store(source), default_sessions(), now=datetime.now(AMSTERDAM), capped=not by_hand
+    )
 
 
 def run_fetch_deals(source: str | None) -> None:
@@ -126,11 +135,11 @@ def run_fetch_deals(source: str | None) -> None:
 
 
 def run_tag_deals(source: str | None) -> None:
-    """Run `tag_deals` here and now for `source`, or for every store."""
-    _run_for_stores(tag_deals_job, source)
+    """Run `tag_deals` here and now for `source`, or for every store, even at the spend cap."""
+    _run_for_stores(tag_deals_job, source, by_hand=True)
 
 
-def _run_for_stores(job: Task, source: str | None) -> None:
+def _run_for_stores(job: Task, source: str | None, **options) -> None:
     """Run `job` for `source`, or for every store.
 
     One store failing doesn't stop the others; the first failure is raised once all have run.
@@ -138,7 +147,7 @@ def _run_for_stores(job: Task, source: str | None) -> None:
     errors = []
     for store in [Store(source)] if source else list(Store):
         try:
-            job(source=store.value)
+            job(source=store.value, **options)
         except Exception as error:
             logger.exception("%s %s: failed", job.name, store)
             errors.append(error)

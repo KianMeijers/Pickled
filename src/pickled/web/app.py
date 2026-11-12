@@ -5,6 +5,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -25,12 +26,14 @@ from pickled.web import text
 from pickled.web.services import Services
 
 HERE = Path(__file__).parent
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 templates = Jinja2Templates(directory=HERE / "templates")
 templates.env.filters.update(
     day_label=text.day_label,
     weekday=text.weekday,
     euros=text.euros,
+    dollars=text.dollars,
     amount=text.amount,
     goal=text.goal,
     warning=text.warning,
@@ -40,7 +43,7 @@ templates.env.globals.update(stores=text.STORES, aisles=text.AISLES, is_note=is_
 
 def create_app(services: Services | None = None, *, lifespan=None) -> FastAPI:
     """The app on `services`, or on those its `lifespan` sets up."""
-    from pickled.web import chat, onboarding, pages, plans
+    from pickled.web import chat, onboarding, pages, plans, settings
 
     app = FastAPI(title="Pickled", lifespan=lifespan)
     if services is not None:
@@ -51,7 +54,9 @@ def create_app(services: Services | None = None, *, lifespan=None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(plans.router)
     app.include_router(onboarding.router)
+    app.include_router(settings.router)
     app.add_exception_handler(StarletteHTTPException, refused)
+    app.middleware("http")(same_origin_only)
     return app
 
 
@@ -82,6 +87,17 @@ async def _with_the_app(app: FastAPI) -> AsyncIterator[None]:
                 picker=picker,
             )
             yield
+
+
+async def same_origin_only(request: Request, call_next):
+    """Refuse a change sent from another site's page: the app has no login, so any page the
+    Household's browser opens could otherwise post to it and spend on the LLM."""
+    if request.method not in SAFE_METHODS:
+        origin = request.headers.get("origin")
+        cross_site = request.headers.get("sec-fetch-site") == "cross-site"
+        if cross_site or (origin and urlsplit(origin).netloc != request.headers.get("host")):
+            return HTMLResponse('<p class="error">Dit verzoek komt van elders.</p>', 403)
+    return await call_next(request)
 
 
 async def refused(request: Request, error: StarletteHTTPException) -> HTMLResponse:

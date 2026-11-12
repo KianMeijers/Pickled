@@ -96,6 +96,11 @@ class AhSearchPriceSource:
             items = items_in(response.json())
             if not isinstance(items, list):
                 raise TypeError(f"expected a list of products, got {type(items).__name__}")
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code in (401, 403):
+                # The anonymous token has expired; the next lookup asks for a new one.
+                self._headers = None
+            raise PricesUnavailable(f"AH product search failed: {error!r}") from error
         except (httpx.HTTPError, RequestBudgetExceeded, KeyError, TypeError, ValueError) as error:
             raise PricesUnavailable(f"AH product search failed: {error!r}") from error
         products = []

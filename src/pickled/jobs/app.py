@@ -4,9 +4,11 @@ from datetime import datetime
 
 import procrastinate
 from croniter import croniter
+from procrastinate import RetryStrategy
 from procrastinate.tasks import Task
 
 from pickled.config import Settings
+from pickled.llm import out_of_credit
 from pickled.migrate import PROCRASTINATE_SCHEMA, schema_conninfo
 from pickled.stores import AMSTERDAM
 
@@ -15,12 +17,23 @@ app = procrastinate.App(
         conninfo=schema_conninfo(Settings().database_url, PROCRASTINATE_SCHEMA)
     ),
     import_paths=[
+        "pickled.jobs.balance",
         "pickled.jobs.deals",
         "pickled.jobs.draft",
         "pickled.jobs.prices",
+        "pickled.jobs.reflect",
         "pickled.jobs.start",
     ],
 )
+
+
+class LlmJobRetry(RetryStrategy):
+    """Retry a failed LLM job, but not once Runware's credit has run out (spec §9)."""
+
+    def get_retry_decision(self, *, exception, job):
+        if out_of_credit(exception):
+            return None
+        return super().get_retry_decision(exception=exception, job=job)
 
 
 def schedule(task: Task, *, cron: str, periodic_id: str, **options) -> None:

@@ -11,7 +11,8 @@ Work through the tools:
    why, with the costs as the plan summary gives them.
 
 You have a limited number of steps: make several tool calls at once where they don't depend on
-each other.
+each other. Calls made at once run in no fixed order, so call `set_leftovers` only after the
+Meal it is leftovers of is set, and `finish_draft` on its own, last.
 {% if hint %}
 
 The Household asks for this week: {{ hint }}

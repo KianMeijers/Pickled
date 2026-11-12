@@ -13,6 +13,7 @@ from pickled.agent.agent import (
 )
 from pickled.agent.context import PlanContext
 from pickled.agent.prompt import system_prompt
+from pickled.agent.reflect import reflect_on_conversation
 
 __all__ = [
     "CHAT_CALL_LIMIT",
@@ -23,6 +24,7 @@ __all__ = [
     "draft_request",
     "is_note",
     "make_agent",
+    "reflect_on_conversation",
     "system_prompt",
     "thread",
     "unanswered_calls",

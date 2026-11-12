@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pickled.ingredients.models import Aisle, Ingredient
@@ -78,6 +79,13 @@ def resolve_ingredient(session: Session, name: str, new: NewIngredient) -> Ingre
         grams_per_piece=new.grams_per_piece,
         keeps_days=new.keeps_days,
     )
-    session.add(ingredient)
-    session.flush()
+    try:
+        with session.begin_nested():
+            session.add(ingredient)
+    except IntegrityError:
+        # Another transaction created it between the lookup and the insert.
+        found = find_ingredient(session, name)
+        if found is None:
+            raise
+        return found
     return ingredient

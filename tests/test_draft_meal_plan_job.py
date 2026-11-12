@@ -82,7 +82,13 @@ def test_missing_deals_queue_a_fresh_draft_of_the_same_week_when_the_job_says(
     [job] = job_queue.jobs.values()
     assert (job["task_name"], job["args"], job["attempts"]) == (
         "draft_meal_plan",
-        {"week": "2026-10-17"},
+        {
+            "week": "2026-10-17",
+            "redraft": False,
+            "hint": None,
+            "request_id": None,
+            "by_hand": False,
+        },
         0,
     )
     assert job["scheduled_at"] == retry_at

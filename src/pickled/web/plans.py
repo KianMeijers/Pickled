@@ -34,6 +34,8 @@ from pickled.web.services import Services, services_of
 
 router = APIRouter()
 
+PLANNING = "Pickled is al aan het plannen."
+
 
 @router.post("/plans/{week_start}/days/{day}/clear", response_class=HTMLResponse)
 async def clear_day(request: Request, week_start: date, day: date):
@@ -91,12 +93,14 @@ async def draft_now(request: Request):
     with services.sessions() as session:
         if meal_plan_for(session, week_start) is not None:
             raise HTTPException(409, "Er is al een plan voor die week.")
+    if await drafting(services, week_start, None):
+        raise HTTPException(409, PLANNING)
     try:
         await draft_meal_plan.configure(queueing_lock=QUEUEING_LOCK).defer_async(
             week=week_start.isoformat()
         )
     except AlreadyEnqueued as queued:
-        raise HTTPException(409, "Pickled is al aan het plannen.") from queued
+        raise HTTPException(409, PLANNING) from queued
     return Response(headers={"HX-Refresh": "true"})
 
 
@@ -110,6 +114,10 @@ async def redraft(request: Request, week_start: date, hint: str = Form("")):
             raise HTTPException(404, "Er is geen plan voor deze week.")
         if meal_plan.status == PlanStatus.ACCEPTED:
             raise HTTPException(409, "Een geaccepteerd plan maak je niet opnieuw.")
+        meal_plan_id = meal_plan.id
+    # The queueing lock only stops a second queued job, not one queued while a draft runs.
+    if await drafting(services, week_start, meal_plan_id):
+        raise HTTPException(409, PLANNING)
     try:
         await draft_meal_plan.configure(queueing_lock=QUEUEING_LOCK).defer_async(
             week=week_start.isoformat(),
@@ -118,7 +126,7 @@ async def redraft(request: Request, week_start: date, hint: str = Form("")):
             request_id=uuid4().hex,
         )
     except AlreadyEnqueued as queued:
-        raise HTTPException(409, "Pickled is al aan het plannen.") from queued
+        raise HTTPException(409, PLANNING) from queued
     # The whole page shows the plan as being drafted.
     return Response(headers={"HX-Refresh": "true"})
 

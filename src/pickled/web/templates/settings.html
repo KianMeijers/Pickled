@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Instellingen · Pickled{% endblock %}
+{% block main %}
+<h1>Instellingen</h1>
+
+<form class="card" hx-post="/instellingen/huishouden">
+  <h2>Huishouden en doelen</h2>
+  <p><label>Met hoeveel personen eten jullie?<br>
+    <input type="number" name="people" value="{{ people }}" min="1" max="12" required></label></p>
+  <p><label>Budget per week in euro<br>
+    <input type="text" name="budget_euros" value="{{ budget_euros }}" inputmode="decimal"></label></p>
+  <p><label>Aantal vegetarische dagen per week<br>
+    <input type="number" name="vegetarian_days" value="{{ vegetarian_days }}" min="0" max="7"></label></p>
+  <p><label>Minimaal eiwit per persoon per dag (gram)<br>
+    <input type="number" name="protein_g" value="{{ protein_g }}" min="0" max="400"></label></p>
+  <p class="muted">Laat een doel leeg om het te schrappen.</p>
+  <button class="primary">Opslaan</button>
+</form>
+
+<section class="card">
+  <h2>Smaak</h2>
+  {% for note in notes %}
+  <form class="note" hx-post="/instellingen/smaak/{{ note.id }}">
+    <input type="text" name="text" value="{{ note.text }}" maxlength="200" required
+           aria-label="Smaaknotitie">
+    <span class="muted">{{ "door jou" if note.author == "user" else "door Pickled" }}</span>
+    <button>Opslaan</button>
+    <button type="button" hx-post="/instellingen/smaak/{{ note.id }}/weg">Weg</button>
+  </form>
+  {% else %}
+  <p class="muted">Nog geen notities.</p>
+  {% endfor %}
+  <form class="note" hx-post="/instellingen/smaak">
+    <input type="text" name="text" maxlength="200" required placeholder="Nieuwe notitie"
+           aria-label="Nieuwe smaaknotitie">
+    <button>Toevoegen</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>LLM-kosten</h2>
+  <table>
+    <thead><tr><th>Rol</th><th>Deze maand</th><th>Vorige maand</th></tr></thead>
+    <tbody>
+      {% for role, now, before in roles %}
+      <tr><td>{{ role.value }}</td><td>{{ now | dollars }}</td><td>{{ before | dollars }}</td></tr>
+      {% endfor %}
+      <tr><th>Totaal</th><th>{{ total_now | dollars }}</th><th>{{ total_before | dollars }}</th></tr>
+    </tbody>
+  </table>
+
+  <h3>Per week</h3>
+  {% if weeks %}
+  <table>
+    <tbody>
+      {% for week_start, cost in weeks %}
+      <tr><td>{{ week_start | day_label }}</td><td>{{ cost | dollars }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Nog geen plannen.</p>
+  {% endif %}
+
+  <table>
+    <tbody>
+      <tr><td>Tegoed bij Runware</td><td>{% if balance %}{{ balance.balance_usd | dollars }}
+        ({{ balance.checked_at | day_label }}){% else %}nog niet gecontroleerd{% endif %}</td></tr>
+      <tr><td>Maandbudget</td><td>{{ cap | dollars }}</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Tegoed tegen eigen telling</h3>
+  <p class="muted">Hoeveel het tegoed tussen de eerste en laatste controle van de maand daalde,
+    tegen wat Pickled zelf aan kosten telde. Na opwaarderen klopt de afname niet.</p>
+  <table>
+    <thead><tr><th></th><th>Deze maand</th><th>Vorige maand</th></tr></thead>
+    <tbody>
+      <tr><td>Afname van het tegoed</td>
+        {% for month in compared %}<td>{{ month.drop | dollars if month else "–" }}</td>{% endfor %}</tr>
+      <tr><td>Volgens Pickled</td>
+        {% for month in compared %}<td>{{ month.recorded | dollars if month else "–" }}</td>{% endfor %}</tr>
+      <tr><td>Verschil</td>
+        {% for month in compared %}<td>{{ month.difference | dollars if month else "–" }}</td>{% endfor %}</tr>
+    </tbody>
+  </table>
+</section>
+{% endblock %}

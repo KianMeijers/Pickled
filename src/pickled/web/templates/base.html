@@ -14,6 +14,10 @@
       {code: "[23]..", swap: true},
       {code: "[45]..", swap: true, error: true, target: "#errors"},
     ];
+    // The reason goes inside #errors, whatever swap the button asked for its own target.
+    document.addEventListener("htmx:beforeSwap", (event) => {
+      if (event.detail.isError) { event.detail.swapOverride = "innerHTML"; }
+    });
     document.addEventListener("htmx:afterSwap", (event) => {
       if (event.detail.target.id === "errors") {
         setTimeout(() => { event.detail.target.innerHTML = ""; }, 5000);
@@ -84,11 +88,21 @@
     .plan-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin: 1rem 0; }
     #errors { position: fixed; left: 1rem; right: 1rem; bottom: 1rem; max-width: 38rem; margin: 0 auto; }
     .deal { color: var(--accent); font-size: .85rem; }
+    nav.top { display: flex; justify-content: flex-end; gap: 1rem; font-size: .9rem; }
+    table { width: 100%; border-collapse: collapse; margin: .5rem 0 1rem; font-size: .9rem; }
+    th, td { text-align: left; padding: .3rem .4rem; border-bottom: 1px solid var(--line); }
+    td + td, th + th { text-align: right; font-variant-numeric: tabular-nums; }
+    form.note { display: flex; gap: .4rem; align-items: center; margin: .4rem 0; }
+    form.note .muted { white-space: nowrap; }
     dialog { border: 1px solid var(--line); border-radius: .75rem; background: var(--card); color: var(--ink); max-width: 30rem; }
   </style>
 </head>
 <body hx-ext="sse">
-  <main>{% block main %}{% endblock %}</main>
+  <main>
+    <nav class="top"><a href="/">Plan</a> <a href="/instellingen">Instellingen</a></nav>
+    <div id="status" hx-get="/status" hx-trigger="load"></div>
+    {% block main %}{% endblock %}
+  </main>
   <div id="errors" aria-live="polite"></div>
 </body>
 </html>

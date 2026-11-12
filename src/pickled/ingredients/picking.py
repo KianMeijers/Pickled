@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 # How long a store found to have no Product for an Ingredient isn't asked again.
 ASK_AGAIN_AFTER = timedelta(weeks=4)
+# How long a Product whose price its source couldn't give isn't asked about again.
+REFRESH_AGAIN_AFTER = timedelta(days=1)
 
 INSTRUCTIONS = """\
 You choose the one supermarket product a meal planner buys for an Ingredient, from a shortlist
@@ -67,6 +69,9 @@ class ProductPicker:
         self.sources = sources
         self.model = model
         self.clock = clock
+        # When each Product's refresh last came back with no price, so a Product the store has
+        # stopped listing doesn't spend a request every time a Meal Plan is priced.
+        self._unanswered: dict[tuple[Store, str], datetime] = {}
 
     def chosen(self, session: Session, ingredient: Ingredient, store: Store) -> Product | None:
         """The Product chosen for `ingredient` at `store`, picked now if it has none yet."""
@@ -101,6 +106,9 @@ class ProductPicker:
         source = self.sources[product.store]
         if last is not None and now - last <= source.refresh_after:
             return
+        asked = self._unanswered.get((product.store, product.sku))
+        if asked is not None and now - asked < REFRESH_AGAIN_AFTER:
+            return
         try:
             current = source.current(session, product.sku)
         except PricesUnavailable as error:
@@ -108,6 +116,7 @@ class ProductPicker:
             return
         if current is None:
             logger.warning("%s at %s is no longer listed", product.name, product.store)
+            self._unanswered[product.store, product.sku] = now
             return
         product.price_observations.append(
             PriceObservation(
@@ -151,10 +160,9 @@ class ProductPicker:
             choice = self.model.with_structured_output(ProductChoice).invoke(
                 _messages(ingredient, store, list(candidates.values()), current, hint)
             )
-            assert isinstance(choice, ProductChoice)
-        if choice is None or choice.sku is None:
+        if not isinstance(choice, ProductChoice) or choice.sku is None:
             logger.info("pick_product %s at %s: no Product", ingredient.name, store)
-            if current is None:
+            if current is None and hint is None:
                 session.add(ProductMiss(ingredient_id=ingredient.id, store=store, asked_at=now))
             return None
         candidate = candidates.get(choice.sku)

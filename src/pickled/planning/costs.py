@@ -73,6 +73,9 @@ class Offer:
     pack: PackSize | None
     rough: bool
     deal: Deal | None = None
+    # A Deal on several packs ("2 voor 5,00", "1+1 gratis") only gives its price per pack
+    # when packs are bought this many at a time.
+    together: int = 1
 
 
 @dataclass(frozen=True)
@@ -156,8 +159,18 @@ def offers(regular: Price | None, deals: list[Deal]) -> list[Offer]:
             found.append(Offer(deal.discount_price_cents, own_pack, rough=False, deal=deal))
         elif regular is not None and deal.effective_fraction is not None:
             cents = _round(regular.cents * (1 - deal.effective_fraction))
-            found.append(Offer(cents, pack, regular.rough or pack is None, deal=deal))
+            rough = regular.rough or pack is None
+            found.append(Offer(cents, pack, rough, deal=deal, together=_bought_together(deal)))
     return found
+
+
+def _bought_together(deal: Deal) -> int:
+    """How many packs have to be bought at once to get `deal`'s price per pack."""
+    if deal.discount_kind == DiscountKind.BUY_N_GET_M_FREE:
+        return (deal.discount_n or 1) + (deal.discount_m or 0)
+    if deal.discount_kind in (DiscountKind.N_FOR_PRICE, DiscountKind.NTH_HALF_PRICE):
+        return deal.discount_n or 1
+    return 1
 
 
 def round_cents(cents: Decimal) -> int:
@@ -169,8 +182,10 @@ def _bought(need: Need, offer: Offer) -> Bought:
     if size is None:
         # Nothing to divide by: one pack, as a rough guess when an amount was asked for.
         rough = offer.rough or need.amount.quantity is not None
-        return Bought(need, offer, 1, offer.cents, rough)
+        return Bought(need, offer, offer.together, offer.together * offer.cents, rough)
     packs = max(1, int((size / offer.pack.amount).to_integral_value(ROUND_CEILING)))
+    # Up to a whole number of the Deal's groups of packs.
+    packs = -(-packs // offer.together) * offer.together
     return Bought(need, offer, packs, packs * offer.cents, offer.rough)
 
 
@@ -198,7 +213,8 @@ def _added_up(ingredient: Ingredient, amounts: list[Amount]) -> list[Amount]:
         totals[amount.unit] += amount.quantity or 0
     if PackUnit.G in totals and PackUnit.ML in totals:
         totals[PackUnit.G] += totals.pop(PackUnit.ML)
-    if PackUnit.PIECE in totals and ingredient.grams_per_piece is not None and len(totals) > 1:
+    measured_in = sum(1 for unit in totals if unit is not None)
+    if PackUnit.PIECE in totals and ingredient.grams_per_piece is not None and measured_in > 1:
         weight = totals.pop(PackUnit.PIECE) * ingredient.grams_per_piece
         totals[PackUnit.ML if PackUnit.ML in totals else PackUnit.G] += weight
     measured = [Amount(quantity, unit) for unit, quantity in totals.items() if unit is not None]

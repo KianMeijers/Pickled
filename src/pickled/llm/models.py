@@ -35,3 +35,13 @@ class LlmCall(Base):
     output_tokens: Mapped[int]
     # Null when the model has no price in the table: unknown, never zero.
     cost_usd: Mapped[Decimal | None]
+
+
+class LlmBalance(Base):
+    """The Runware account balance, as `check_llm_balance` read it. Kept forever."""
+
+    __tablename__ = "llm_balance"
+
+    id: Mapped[IdPk]
+    checked_at: Mapped[datetime] = mapped_column(index=True)
+    balance_usd: Mapped[Decimal]

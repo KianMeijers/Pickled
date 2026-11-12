@@ -30,6 +30,11 @@ router = APIRouter()
 # Onboardings one at a time, so a double submit can't onboard twice.
 ONE_AT_A_TIME = text("LOCK TABLE household IN EXCLUSIVE MODE")
 
+# The most the forms take, so a slip of the hand is refused rather than planned around.
+MOST_PEOPLE = 20
+MOST_BUDGET_EUROS = 10_000
+MOST_PROTEIN_G = 1_000
+
 
 @router.get("/welkom", response_class=HTMLResponse)
 async def welcome(request: Request):
@@ -53,9 +58,8 @@ async def onboard(
     services = services_of(request)
     now = services.clock()
     try:
-        budget, vegetarian, protein = (
-            _number(field) for field in (budget_euros, vegetarian_days, protein_g)
-        )
+        check_people(people)
+        budget, vegetarian, protein = form_goals(budget_euros, vegetarian_days, protein_g)
         with services.sessions.begin() as session:
             session.execute(ONE_AT_A_TIME)
             if household(session) is not None:
@@ -63,12 +67,12 @@ async def onboard(
             set_household(session, people=people)
             if budget:
                 kind = FoodGoalKind.BUDGET_CENTS_PER_WEEK
-                set_food_goal(session, kind, max=int(budget * 100), now=now)
+                set_food_goal(session, kind, max=budget, now=now)
             if vegetarian:
                 kind = FoodGoalKind.VEGETARIAN_DAYS_PER_WEEK
-                set_food_goal(session, kind, min=int(vegetarian), now=now)
+                set_food_goal(session, kind, min=vegetarian, now=now)
             if protein:
-                set_food_goal(session, FoodGoalKind.PROTEIN_G_PER_DAY, min=int(protein), now=now)
+                set_food_goal(session, FoodGoalKind.PROTEIN_G_PER_DAY, min=protein, now=now)
             for note in taste_notes.splitlines():
                 if note.strip():
                     add_taste_note(session, note.strip(), Author.USER, now=now)
@@ -87,7 +91,36 @@ async def onboard(
     return RedirectResponse("/", status_code=303)
 
 
-def _number(field: str) -> Decimal | None:
-    """A form's number, in Dutch or English notation; None if left blank."""
+def form_number(field: str, *, most: int, whole: bool = True) -> Decimal | None:
+    """A form's number from 0 to `most`, in Dutch or English notation; None if left blank.
+    Anything else raises `InvalidOperation`."""
     field = field.strip().replace(",", ".")
-    return Decimal(field) if field else None
+    if not field:
+        return None
+    number = Decimal(field)
+    if not number.is_finite() or not 0 <= number <= most:
+        raise InvalidOperation(f"{field} is not from 0 to {most}")
+    if whole and number != number.to_integral_value():
+        raise InvalidOperation(f"{field} is not a whole number")
+    return number
+
+
+def form_goals(
+    budget_euros: str, vegetarian_days: str, protein_g: str
+) -> tuple[int | None, int | None, int | None]:
+    """The forms' Food Goals: the budget in cents, vegetarian days and grams of protein.
+    None for one left blank or set to 0."""
+    budget = form_number(budget_euros, most=MOST_BUDGET_EUROS, whole=False)
+    vegetarian = form_number(vegetarian_days, most=7)
+    protein = form_number(protein_g, most=MOST_PROTEIN_G)
+    return (
+        int((budget * 100).to_integral_value()) if budget else None,
+        int(vegetarian) if vegetarian else None,
+        int(protein) if protein else None,
+    )
+
+
+def check_people(people: int) -> int:
+    if not 1 <= people <= MOST_PEOPLE:
+        raise InvalidOperation(f"{people} people is not from 1 to {MOST_PEOPLE}")
+    return people
