@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: pickled
       POSTGRES_DB: pickled
     ports:
-      - "5432:5432"
+      # Only this machine: the password is a development one.
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro
@@ -24,7 +25,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://pickled:pickled@db:5432/pickled
     ports:
-      - "8000:8000"
+      # Only this machine: the app has no login.
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy

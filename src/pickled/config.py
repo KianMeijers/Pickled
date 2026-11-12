@@ -30,6 +30,3 @@ class Settings(BaseSettings):
     llm_min_balance_usd: Decimal = Field(
         Decimal("5"), validation_alias="PICKLED_LLM_MIN_BALANCE_USD"
     )
-
-
-settings = Settings()

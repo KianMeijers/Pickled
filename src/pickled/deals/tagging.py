@@ -100,6 +100,9 @@ def tag_deals(
             messages = _messages(batch, ingredient_names(session))
         asked.update(batch)
         answer = tagger.invoke(messages)
+        if not isinstance(answer, DealTags):
+            logger.warning("tag_deals %s: the model gave no answer for %d Deals", store, len(batch))
+            continue
         with sessions.begin() as session:
             tagged += _save(session, answer, batch=set(batch), now=now)
     if tagged < len(asked):

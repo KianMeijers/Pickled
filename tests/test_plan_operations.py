@@ -12,6 +12,7 @@ from pickled.planning import (
     clear_meal,
     finish_draft,
     meal_plan_for,
+    restart_draft,
     set_leftovers,
     set_meal,
     set_store,
@@ -145,6 +146,36 @@ def test_clearing_a_cooked_meal_leaves_its_leftovers_days_unfilled(db_session, s
     summary = clear_meal(db_session, meal_plan, WEEK[0], today=TODAY, prices=PRICES)
 
     assert [d.kind for d in summary.days[:2]] == ["empty", "unfilled"]
+
+
+def test_turning_a_cooked_meal_into_leftovers_leaves_its_leftovers_days_unfilled(db_session, stew):
+    meal_plan = plan(db_session)
+    other = recipe(db_session, "Soep", ("ui", 1, "piece"))
+    set_meal(db_session, meal_plan, WEEK[0], other, 2, today=TODAY, prices=PRICES)
+    set_meal(db_session, meal_plan, WEEK[1], stew, 2, today=TODAY, prices=PRICES)
+    set_leftovers(db_session, meal_plan, WEEK[2], WEEK[1], today=TODAY, prices=PRICES)
+
+    summary = set_leftovers(db_session, meal_plan, WEEK[1], WEEK[0], today=TODAY, prices=PRICES)
+
+    assert [d.kind for d in summary.days[:3]] == ["recipe", "leftovers", "unfilled"]
+
+
+def test_a_draft_restarted_mid_week_keeps_its_passed_days_and_can_still_be_finished(
+    db_session, stew
+):
+    meal_plan = plan(db_session)
+    fill(db_session, meal_plan, leaving_out=WEEK[1:2])
+    monday = WEEK[2]
+
+    restart_draft(db_session, meal_plan, today=monday)
+
+    assert [meal.date for meal in meal_plan.meals] == [WEEK[0]]
+    for day in WEEK[2:]:
+        clear_meal(db_session, meal_plan, day, today=monday, prices=PRICES)
+    later = NOW + timedelta(days=4)
+    assert later.date() == monday
+    # Sunday passed unfilled, which no longer holds the draft back.
+    finish_draft(db_session, meal_plan, now=later, prices=PRICES)
 
 
 def test_finishing_a_draft_needs_every_day_filled_or_deliberately_empty(db_session, stew):

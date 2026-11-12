@@ -79,7 +79,8 @@ def parse(raw: list, on: date) -> FetchResult:
         try:
             promotion = Promotion.model_validate(item)
         except ValidationError:
-            bad.add(item.get("id") if isinstance(item.get("id"), str) else id(item))
+            source_id = item.get("id") if isinstance(item, dict) else None
+            bad.add(source_id if isinstance(source_id, str) else id(item))
             continue
         if promotion.id in deals or not promotion.active or promotion.hidden:
             continue

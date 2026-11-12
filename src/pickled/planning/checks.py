@@ -85,7 +85,7 @@ def _check(goal: FoodGoal, eaten: list[Recipe], shopping_cents: int | None) -> G
             _within(actual, target_min, target_max),
         )
     if goal.kind == FoodGoalKind.VEGETARIAN_DAYS_PER_WEEK:
-        actual = sum(1 for recipe in eaten if VEGETARIAN_TAG in recipe.tags)
+        actual = sum(1 for recipe in eaten if VEGETARIAN_TAG in recipe.tags) if eaten else None
         return GoalCheck(
             goal.kind,
             goal.min,

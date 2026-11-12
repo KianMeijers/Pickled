@@ -13,10 +13,16 @@ from procrastinate.tasks import Task
 from sqlalchemy.orm import Session, sessionmaker
 
 from pickled.db import default_sessions
-from pickled.deals import DealSource, save_fetch, source_for, tag_deals
-from pickled.jobs.app import app, schedule
+from pickled.deals import (
+    DealPayloadError,
+    DealSource,
+    save_fetch,
+    source_for,
+    tag_deals,
+)
+from pickled.jobs.app import LlmJobRetry, app, schedule
 from pickled.jobs.spend import at_the_cap
-from pickled.llm import Role, llm_context, make_chat_model, out_of_credit
+from pickled.llm import Role, llm_context, make_chat_model
 from pickled.stores import (
     AMSTERDAM,
     REQUEST_BUDGET,
@@ -29,8 +35,8 @@ from pickled.stores import (
 
 logger = logging.getLogger(__name__)
 
-# AH's Bonus week starts on Monday and Jumbo's on Wednesday; both are refreshed on Thursday,
-# before the Saturday Shopping Day.
+# AH's Bonus week starts on Monday and Jumbo's on Wednesday, so each is fetched that morning;
+# both are fetched again on Thursday, before the Saturday Shopping Day.
 SCHEDULES = [
     (Store.AH, "0 6 * * 1", "monday"),
     (Store.JUMBO, "0 6 * * 3", "wednesday"),
@@ -40,19 +46,14 @@ SCHEDULES = [
 
 
 class FetchRetry(RetryStrategy):
-    """Retry a failed fetch with backoff, but not once the store's request budget is spent."""
+    """Retry a failed fetch with backoff, unless trying again would fail the same way.
+
+    A spent request budget and a payload that has changed shape stay as they are, and each
+    retry of an AH fetch costs a large part of the week's budget.
+    """
 
     def get_retry_decision(self, *, exception, job):
-        if isinstance(exception, RequestBudgetExceeded):
-            return None
-        return super().get_retry_decision(exception=exception, job=job)
-
-
-class LlmJobRetry(RetryStrategy):
-    """Retry a failed LLM job, but not once Runware's credit has run out (spec §9)."""
-
-    def get_retry_decision(self, *, exception, job):
-        if out_of_credit(exception):
+        if isinstance(exception, RequestBudgetExceeded | DealPayloadError):
             return None
         return super().get_retry_decision(exception=exception, job=job)
 

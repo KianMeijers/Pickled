@@ -138,6 +138,23 @@ def test_a_deal_at_the_store_prices_the_line_and_marks_it(db_session, kip):
     assert summary.costs[Store.JUMBO].shopping_cents == cents("6.00")
 
 
+def test_a_deal_on_several_packs_only_counts_when_that_many_are_bought(db_session, kip):
+    kipfilet = find_ingredient(db_session, "kipfilet")
+    deal(db_session, Store.AH, kipfilet, "1+1 gratis")
+    prices = FakePrices().set("kipfilet", Store.AH, cents("6.00"), "500 g")
+    meal_plan = plan(db_session)
+    set_store(db_session, meal_plan, Store.AH, today=TODAY, prices=prices)
+
+    one_pack = set_meal(db_session, meal_plan, WEEK[0], kip, 2, today=TODAY, prices=prices)
+    # 300 g is one pack, which costs its regular price: the second, free pack isn't needed.
+    assert shopping(one_pack)[0] == ("kipfilet", 300, "g", 1, cents("6.00"))
+    assert one_pack.shopping_list[0].deal is None
+
+    two_packs = set_meal(db_session, meal_plan, WEEK[0], kip, 4, today=TODAY, prices=prices)
+    assert shopping(two_packs)[0] == ("kipfilet", 600, "g", 2, cents("6.00"))
+    assert two_packs.shopping_list[0].deal == "1+1 gratis"
+
+
 def test_a_fixed_price_deal_with_its_own_size_is_bought_in_its_packs(db_session, kip):
     kipfilet = find_ingredient(db_session, "kipfilet")
     deal(db_session, Store.AH, kipfilet, "voor 7.00", unit_size="1 kg")

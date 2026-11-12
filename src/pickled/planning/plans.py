@@ -15,7 +15,7 @@ from pickled.planning.errors import PlanRefused
 from pickled.planning.models import Meal, MealPlan, PlanStatus, Recipe
 from pickled.planning.shopping import add_item
 from pickled.planning.summary import PlanSummary, Prices, plan_summary
-from pickled.stores import Store
+from pickled.stores import AMSTERDAM, Store
 from pickled.taste import household
 
 SATURDAY = 5  # date.weekday()
@@ -123,6 +123,8 @@ def set_leftovers(
     if source is None or source.recipe is None:
         raise PlanRefused(f"{of_day} has no Meal cooked from a Recipe to have leftovers of.")
     meal = _meal(session, meal_plan, day)
+    # Nothing is cooked on `day` any more, so the days eating its leftovers become unfilled.
+    _remove_eaters(session, meal)
     meal.recipe, meal.leftovers_of = None, source
     meal.servings = servings or meal_plan.people
     return plan_summary(session, meal_plan, prices=prices)
@@ -134,9 +136,7 @@ def clear_meal(
     """Leave `day` deliberately empty. Days eating its leftovers become unfilled."""
     _check_day(meal_plan, day, today)
     meal = _meal(session, meal_plan, day)
-    session.flush()
-    for eater in session.scalars(select(Meal).where(Meal.leftovers_of_id == meal.id)).all():
-        session.delete(eater)
+    _remove_eaters(session, meal)
     meal.recipe, meal.leftovers_of, meal.servings = None, None, None
     session.flush()
     return plan_summary(session, meal_plan, prices=prices)
@@ -162,16 +162,17 @@ def finish_draft(
     """End the draft: every day must have a Meal or be deliberately left empty."""
     if meal_plan.status != PlanStatus.DRAFT:
         raise PlanRefused("This Meal Plan is already accepted.")
-    _check_complete(session, meal_plan)
+    _check_complete(session, meal_plan, _day_of(now))
     meal_plan.drafted_at = now
     return plan_summary(session, meal_plan, prices=prices)
 
 
-def restart_draft(session: Session, meal_plan: MealPlan) -> None:
-    """Start a draft again from no Meals, to be redrafted. Manual Shopping List items stay."""
+def restart_draft(session: Session, meal_plan: MealPlan, *, today: date) -> None:
+    """Start a draft again from no Meals, to be redrafted. Days that have passed keep theirs,
+    and manual Shopping List items stay."""
     if meal_plan.status != PlanStatus.DRAFT:
         raise PlanRefused("An accepted Meal Plan is never redrafted.")
-    meals = _meals(session, meal_plan)
+    meals = [meal for meal in _meals(session, meal_plan) if meal.date >= today]
     # Leftovers first: they point at the Meal they are leftovers of.
     for meal in sorted(meals, key=lambda meal: meal.leftovers_of_id is None):
         session.delete(meal)
@@ -186,7 +187,7 @@ def accept_meal_plan(
     """Accept the Meal Plan. It never goes back to draft, but the days ahead can still change."""
     if meal_plan.status == PlanStatus.ACCEPTED:
         raise PlanRefused("This Meal Plan is already accepted.")
-    _check_complete(session, meal_plan)
+    _check_complete(session, meal_plan, _day_of(now))
     meal_plan.status, meal_plan.accepted_at = PlanStatus.ACCEPTED, now
     return plan_summary(session, meal_plan, prices=prices)
 
@@ -198,9 +199,11 @@ def _check_day(meal_plan: MealPlan, day: date, today: date) -> None:
         raise PlanRefused(f"{day} has passed, and days that have passed never change.")
 
 
-def _check_complete(session: Session, meal_plan: MealPlan) -> None:
+def _check_complete(session: Session, meal_plan: MealPlan, today: date) -> None:
+    """Every day still ahead has a Meal or is left empty. A day that has passed can no longer
+    be filled, so it doesn't hold the Meal Plan back."""
     filled = {meal.date for meal in _meals(session, meal_plan)}
-    unfilled = [day for day in meal_plan.week if day not in filled]
+    unfilled = [day for day in meal_plan.week if day >= today and day not in filled]
     if unfilled:
         days = ", ".join(str(day) for day in unfilled)
         raise PlanRefused(f"Fill these days, or leave them deliberately empty, first: {days}.")
@@ -213,6 +216,18 @@ def _check_not_repeated(session: Session, recipe: Recipe, day: date) -> None:
             f"{recipe.title} is cooked on {cooked_on}, and a Recipe may not repeat within "
             "3 weeks: choose another, or use leftovers."
         )
+
+
+def _day_of(now: datetime) -> date:
+    return now.astimezone(AMSTERDAM).date()
+
+
+def _remove_eaters(session: Session, meal: Meal) -> None:
+    """Delete the Meals that are leftovers of `meal`, leaving their days unfilled."""
+    session.flush()
+    for eater in session.scalars(select(Meal).where(Meal.leftovers_of_id == meal.id)).all():
+        session.delete(eater)
+    session.flush()
 
 
 def _meals(session: Session, meal_plan: MealPlan) -> list[Meal]:

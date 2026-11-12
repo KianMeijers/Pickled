@@ -10,8 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from pickled.config import Settings
 from pickled.db import default_sessions
-from pickled.jobs.app import app, schedule
-from pickled.jobs.deals import LlmJobRetry
+from pickled.jobs.app import LlmJobRetry, app, schedule
 from pickled.llm import LlmBalance, read_runware_balance
 from pickled.stores import AMSTERDAM
 

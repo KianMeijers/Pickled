@@ -584,3 +584,32 @@ def test_chat_shows_a_banner_once_the_spend_cap_is_reached(db_session, web):
     banner = "Het maandbudget voor LLM-kosten is op"
     assert banner not in before.text
     assert banner in after.text
+
+
+@pytest.mark.parametrize(
+    "answers",
+    [
+        {"people": "0"},
+        {"people": "2", "budget_euros": "-5"},
+        {"people": "2", "budget_euros": "nan"},
+        {"people": "2", "vegetarian_days": "8"},
+        {"people": "2", "protein_g": "2.5"},
+    ],
+)
+def test_onboarding_refuses_answers_that_cant_be_right(db_session, web, job_queue, answers):
+    refused = web.client.post("/welkom", data=answers, follow_redirects=False)
+
+    assert refused.status_code == 422
+    assert household(db_session) is None
+    assert queued(job_queue) == []
+
+
+def test_a_change_sent_from_another_sites_page_is_refused(db_session, web, job_queue):
+    elsewhere = {"Origin": "https://elsewhere.example"}
+
+    refused = web.client.post("/plans/draft", headers=elsewhere)
+
+    assert refused.status_code == 403
+    assert queued(job_queue) == []
+    same = {"Origin": str(web.client.base_url).rstrip("/")}
+    assert web.client.post("/plans/draft", headers=same).status_code != 403

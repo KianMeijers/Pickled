@@ -15,8 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from pickled.agent import conversation, is_note, reflect_on_conversation
 from pickled.config import Settings
 from pickled.db import default_sessions
-from pickled.jobs.app import app, schedule
-from pickled.jobs.deals import LlmJobRetry
+from pickled.jobs.app import LlmJobRetry, app, schedule
 from pickled.jobs.spend import at_the_cap
 from pickled.llm import Role, llm_context, make_chat_model
 from pickled.migrate import LANGGRAPH_SCHEMA, schema_conninfo
@@ -46,6 +45,17 @@ async def reflect_on_week_now(
     if capped and at_the_cap(f"reflect_on_week {meal_plan_id}", sessions, now=clock()):
         return
     messages = await conversation(checkpointer, meal_plan_id)
+    # In a thread: the model call is synchronous, and would hold up the worker's event loop.
+    await asyncio.to_thread(_reflect, meal_plan_id, messages, sessions, model, clock)
+
+
+def _reflect(
+    meal_plan_id: int,
+    messages: list,
+    sessions: sessionmaker[Session],
+    model: BaseChatModel,
+    clock: Callable[[], datetime],
+) -> None:
     with llm_context(job="reflect_on_week", meal_plan=meal_plan_id), sessions.begin() as session:
         # Locked, so two runs at once can't both reflect on the week.
         meal_plan = session.get_one(MealPlan, meal_plan_id, with_for_update=True)

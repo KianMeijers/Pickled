@@ -39,7 +39,7 @@ from pickled.taste import (
     update_taste_note,
 )
 from pickled.web.app import templates
-from pickled.web.onboarding import form_number
+from pickled.web.onboarding import check_people, form_goals
 from pickled.web.services import Services, services_of
 
 router = APIRouter()
@@ -68,13 +68,12 @@ async def change_household(
     services = services_of(request)
     now = services.clock()
     try:
-        budget, vegetarian, protein = (
-            form_number(field) for field in (budget_euros, vegetarian_days, protein_g)
-        )
+        check_people(people)
+        budget, vegetarian, protein = form_goals(budget_euros, vegetarian_days, protein_g)
         wanted = {
-            FoodGoalKind.BUDGET_CENTS_PER_WEEK: (None, budget * 100 if budget else None),
-            FoodGoalKind.VEGETARIAN_DAYS_PER_WEEK: (vegetarian or None, None),
-            FoodGoalKind.PROTEIN_G_PER_DAY: (protein or None, None),
+            FoodGoalKind.BUDGET_CENTS_PER_WEEK: (None, budget),
+            FoodGoalKind.VEGETARIAN_DAYS_PER_WEEK: (vegetarian, None),
+            FoodGoalKind.PROTEIN_G_PER_DAY: (protein, None),
         }
         with services.sessions.begin() as session:
             found = household(session)

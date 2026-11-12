@@ -89,6 +89,12 @@ class LlmCallRecorder(BaseCallbackHandler):
             logger.warning("A %s call to %s reported no usage", self.role, self.model)
             return
         usage = TokenUsage.from_metadata(metadata)
+        cost_usd = price_of(self.model, usage)
+        if cost_usd is None:
+            logger.warning(
+                "No price is known for %s, so this call isn't counted towards the spend cap",
+                self.model,
+            )
         context = current_llm_context()
         call = LlmCall(
             called_at=datetime.now(UTC),
@@ -100,7 +106,7 @@ class LlmCallRecorder(BaseCallbackHandler):
             cache_write_tokens=usage.cache_write,
             cache_read_tokens=usage.cache_read,
             output_tokens=usage.output,
-            cost_usd=price_of(self.model, usage),
+            cost_usd=cost_usd,
         )
         with (self.sessions or default_sessions()).begin() as session:
             session.add(call)

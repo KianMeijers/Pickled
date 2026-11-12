@@ -30,8 +30,7 @@ from pickled.config import Settings
 from pickled.db import default_sessions
 from pickled.deals import deals_valid_on
 from pickled.ingredients import ProductPicker, open_product_picker
-from pickled.jobs.app import app, schedule
-from pickled.jobs.deals import LlmJobRetry
+from pickled.jobs.app import LlmJobRetry, app, schedule
 from pickled.jobs.notify import notify
 from pickled.jobs.spend import at_the_cap
 from pickled.llm import Role, llm_context, make_chat_model
@@ -113,7 +112,7 @@ async def draft_meal_plan_now(
                 logger.info("draft_meal_plan %s: already accepted", week_start)
                 return
             if redraft:
-                restart_draft(session, meal_plan)
+                restart_draft(session, meal_plan, today=now.date())
             elif meal_plan.drafted_at is not None:
                 logger.info("draft_meal_plan %s: already drafted", week_start)
                 return
@@ -229,7 +228,13 @@ async def draft_meal_plan(
         try:
             await draft_meal_plan.configure(
                 schedule_at=missing.retry_at, queueing_lock=QUEUEING_LOCK
-            ).defer_async(week=week_start.isoformat())
+            ).defer_async(
+                week=week_start.isoformat(),
+                redraft=redraft,
+                hint=hint,
+                request_id=request_id,
+                by_hand=by_hand,
+            )
         except AlreadyEnqueued:
             logger.info("draft_meal_plan %s: a draft is already queued", week_start)
 

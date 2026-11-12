@@ -14,6 +14,10 @@
       {code: "[23]..", swap: true},
       {code: "[45]..", swap: true, error: true, target: "#errors"},
     ];
+    // The reason goes inside #errors, whatever swap the button asked for its own target.
+    document.addEventListener("htmx:beforeSwap", (event) => {
+      if (event.detail.isError) { event.detail.swapOverride = "innerHTML"; }
+    });
     document.addEventListener("htmx:afterSwap", (event) => {
       if (event.detail.target.id === "errors") {
         setTimeout(() => { event.detail.target.innerHTML = ""; }, 5000);
